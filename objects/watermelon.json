@@ -2,15 +2,51 @@
   "name": "watermelon",
   "material": "watermelon",
   "stack": "depth",
-  "shape": {"ax": 0.135, "ay": 0.1, "height": 0.1, "edge": 2.0, "power": 0.5,
-            "wobble": [[2, 0.03, 0.0], [3, -0.015, 0.5]]},
-  "intro": 0.4,
+  "shape": {
+    "ax": 0.135,
+    "ay": 0.1,
+    "height": 0.1,
+    "edge": 2.0,
+    "power": 0.5,
+    "wobble": [
+      [
+        2,
+        0.03,
+        0.0
+      ],
+      [
+        3,
+        -0.015,
+        0.5
+      ]
+    ]
+  },
+  "intro": 0.0,
   "rounds": [
-    {"cuts": 10, "dur": 3.2},
-    {"cuts": 50, "dur": 5.0},
-    {"cuts": 150, "dur": 7.0},
-    {"cuts": 500, "dur": 10.0},
-    {"cuts": 1000, "dur": 13.0, "collapse": 3.2}
+    {
+      "cuts": 10,
+      "dur": 2.6,
+      "lead": 0.1,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 100,
+      "dur": 5.0,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 500,
+      "dur": 7.5,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 1000,
+      "dur": 10.0,
+      "collapse": 3.0
+    }
   ],
-  "outro": 0.0
+  "outro": 0.0,
+  "lead": 0.1,
+  "hook": "WAIT FOR 1,000 CUTS…",
+  "hook_dur": 3.0
 }

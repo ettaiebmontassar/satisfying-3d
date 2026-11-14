@@ -93,7 +93,8 @@ class Plan:
             cuts += [(2, z0 + (z1 - z0) * (k + 1) / (nz + 1)) for k in range(nz)]
             # rythme : on accélère au fil du round (les premières coupes se voient bien)
             u = np.linspace(0, 1, n + 1)[1:]
-            times = t + 0.25 + (dur - 0.45) * (u ** 1.6)
+            lead = rd.get("lead", cfg.get("lead", 0.25))          # délai avant la 1re coupe
+            times = t + lead + (dur - lead - 0.2) * (u ** 1.6)
             t_cut_end = t + dur
             t_col = t_cut_end + rd.get("pause", 0.35)
             t_end = t_col + rd.get("collapse", 2.4)

@@ -26,6 +26,20 @@ def counter(img, value, label, cy, big, small, pop=0.0):
     d.text((W / 2, cy + big * 0.78 * s), label, font=fs, fill=AMBER, anchor="mm")
 
 
+def pill(img, text, cy, size, a=1.0):
+    """Bandeau d'accroche (texte noir sur jaune) en haut de l'image."""
+    W = img.size[0]; s = W / 1080
+    f = ImageFont.truetype(FONT, int(size * s))
+    l, t_, r, b = f.getbbox(text)
+    w, h = r - l, b - t_
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0)); d = ImageDraw.Draw(layer)
+    pad_x, pad_y = 34 * s, 20 * s
+    box = (W / 2 - w / 2 - pad_x, cy - h / 2 - pad_y, W / 2 + w / 2 + pad_x, cy + h / 2 + pad_y)
+    d.rounded_rectangle(box, radius=int(30 * s), fill=(255, 210, 63, int(240 * a)))
+    d.text((W / 2, cy), text, font=f, fill=(25, 18, 12, int(255 * a)), anchor="mm")
+    img.alpha_composite(layer)
+
+
 def compose(plan, src, f):
     img = Image.open(src).convert("RGBA")
     t = f / core.FPS
@@ -36,6 +50,10 @@ def compose(plan, src, f):
         pop_cut = max(0.0, 1 - (t - r["t_cut_end"]) / 0.4)
     pop_cube = max(0.0, 1 - abs(t - (r["t_col"] + 0.9)) / 0.3) if t >= r["t_col"] else 0.0
     H = img.size[1]
+    hook = plan.cfg.get("hook")
+    if hook and t < plan.cfg.get("hook_dur", 3.0):
+        k = min(1.0, (plan.cfg.get("hook_dur", 3.0) - t) / 0.3)        # disparaît en fondu
+        pill(img, hook, 0.2 * H, 46, k)
     counter(img, cuts, "CUTS", 0.085 * H, 150, 44, pop_cut)
     counter(img, cubes, "CUBES", 0.765 * H, 96, 40, pop_cube)
     return img.convert("RGB")
