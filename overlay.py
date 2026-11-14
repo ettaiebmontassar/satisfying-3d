@@ -40,6 +40,49 @@ def pill(img, text, cy, size, a=1.0):
     img.alpha_composite(layer)
 
 
+def subscribe_times(plan):
+    """(apparition, clic) du bouton d'abonnement : fin de vidéo, quand le dernier compteur est fini."""
+    t0 = plan.total - 2.9
+    return t0, t0 + 1.1
+
+
+def subscribe(img, t, t0, t_click):
+    """Bouton « SUBSCRIBE » qui apparaît, curseur qui clique, puis « SUBSCRIBED ✓ »."""
+    if t < t0:
+        return
+    W, H = img.size; s = W / 1080
+    k = min(1.0, (t - t0) / 0.35)
+    sc = 1 - (1 - k) ** 3 * (1 + 2.5 * k)                  # petit rebond
+    press = 1 - 0.08 * max(0.0, 1 - abs(t - t_click) / 0.12)
+    done = t >= t_click
+    cx, cy = W / 2, 0.235 * H
+    w, h = 520 * s * sc * press, 120 * s * sc * press
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0)); d = ImageDraw.Draw(layer)
+    d.rounded_rectangle((cx - w / 2 + 6 * s, cy - h / 2 + 10 * s, cx + w / 2 + 6 * s, cy + h / 2 + 10 * s), radius=int(h / 2), fill=(0, 0, 0, 110))
+    d.rounded_rectangle((cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2), radius=int(h / 2),
+                        fill=(70, 70, 74, 245) if done else (222, 28, 36, 245))
+    f = ImageFont.truetype(FONT, max(8, int(56 * s * sc * press)))
+    label = "SUBSCRIBED" if done else "SUBSCRIBE"
+    tx = cx + (22 * s * sc if done else 0)
+    d.text((tx, cy), label, font=f, fill=(255, 255, 255, 255), anchor="mm")
+    if done:                                             # coche
+        x0, y0 = cx - 205 * s * sc, cy
+        d.line([(x0 - 22 * s, y0), (x0 - 6 * s, y0 + 16 * s), (x0 + 22 * s, y0 - 18 * s)], fill=(255, 255, 255, 255), width=int(9 * s))
+    # curseur (main stylisée = flèche blanche) qui arrive sur le bouton puis clique
+    u = min(1.0, max(0.0, (t - (t0 + 0.35)) / max(0.05, t_click - t0 - 0.35)))
+    u = 1 - (1 - u) ** 2
+    px, py = cx + 150 * s + (1 - u) * 260 * s, cy + 20 * s + (1 - u) * 300 * s
+    cs = 1.6 * s * (0.85 if abs(t - t_click) < 0.12 else 1.0)
+    arrow = [(0, 0), (0, 44), (11, 34), (20, 54), (28, 50), (19, 31), (34, 31)]
+    pts = [(px + x * cs, py + y * cs) for x, y in arrow]
+    d.polygon([(x + 3 * s, y + 4 * s) for x, y in pts], fill=(0, 0, 0, 120))
+    d.polygon(pts, fill=(255, 255, 255, 255), outline=(20, 20, 20, 255))
+    if abs(t - t_click) < 0.35:                          # onde du clic
+        r = (t - t_click + 0.35) / 0.7 * 70 * s
+        d.ellipse((px - r, py - r, px + r, py + r), outline=(255, 255, 255, int(200 * (1 - (t - t_click + 0.35) / 0.7))), width=int(5 * s))
+    img.alpha_composite(layer)
+
+
 def compose(plan, src, f):
     img = Image.open(src).convert("RGBA")
     t = f / core.FPS
@@ -56,6 +99,8 @@ def compose(plan, src, f):
         pill(img, hook, 0.2 * H, 46, k)
     counter(img, cuts, "CUTS", 0.085 * H, 150, 44, pop_cut)
     counter(img, cubes, "CUBES", 0.765 * H, 96, 40, pop_cube)
+    if plan.cfg.get("subscribe", True):
+        subscribe(img, t, *subscribe_times(plan))
     return img.convert("RGB")
 
 

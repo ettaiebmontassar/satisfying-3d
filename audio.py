@@ -70,6 +70,13 @@ def main():
         n = int(1.4 * SR)
         rumble = bp(rng.standard_normal(n), 60, 400) * env(n, 0.05, 0.4) * 0.6
         add(r["t_col"] + 0.1, rumble, 1.0)
+    if plan.cfg.get("subscribe", True):                       # clic sur « SUBSCRIBE » + petite cloche
+        import overlay
+        t0, tc = overlay.subscribe_times(plan)
+        add(tc, tick(3000) + tick(1500) * 0.6, 1.2)
+        n = int(0.9 * SR); tt_ = np.arange(n) / SR
+        bell = (np.sin(2 * np.pi * 1320 * tt_) + 0.5 * np.sin(2 * np.pi * 2640 * tt_)) * np.exp(-tt_ / 0.25) * 0.35
+        add(tc + 0.12, bell, 1.0)
     # petite pièce : réverbération courte
     ir_n = int(0.35 * SR); ir = rng.standard_normal(ir_n) * np.exp(-np.arange(ir_n) / SR / 0.08) * 0.04; ir[0] = 1
     y = fftconvolve(out, ir)[: len(out)]

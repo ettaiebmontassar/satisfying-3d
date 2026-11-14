@@ -131,6 +131,40 @@ def watermelon_material(name, coord_mode):
     return m
 
 
+def cake_material(name, coord_mode):
+    """Gâteau au chocolat : glaçage brillant dehors ; dedans, génoise et crème en couches (selon la hauteur)."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    glaze = ramp(nt, noise(nt, vec, 30.0, 3).outputs["Fac"], [(0.4, (0.035, 0.014, 0.007)), (0.6, (0.06, 0.025, 0.012))]).outputs["Color"]
+    if coord_mode == "object":
+        col = cut_lines(nt, glaze, (0.55, 0.38, 0.24))
+        bsdf.inputs["Roughness"].default_value = 0.3; bsdf.inputs["Coat Weight"].default_value = 0.2
+        nt.links.new(col, bsdf.inputs["Base Color"])
+        return m
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(vec, sep.inputs[0])
+    # couches selon la hauteur z (m) : génoise / crème / génoise / crème / génoise
+    lay = nt.nodes.new("ShaderNodeValToRGB"); lay.color_ramp.interpolation = "CONSTANT"
+    els = lay.color_ramp.elements
+    els[0].position = 0.0; els[0].color = (0, 0, 0, 1)
+    els[1].position = 0.27; els[1].color = (1, 1, 1, 1)
+    for pos, v in ((0.36, 0), (0.62, 1), (0.71, 0)):
+        e = els.new(pos); e.color = (v, v, v, 1)          # 0 = génoise, 1 = crème
+    sc = nt.nodes.new("ShaderNodeMath"); sc.operation = "MULTIPLY"; sc.inputs[1].default_value = 1 / 0.09
+    nt.links.new(sep.outputs[2], sc.inputs[0]); nt.links.new(sc.outputs[0], lay.inputs[0])
+    sponge = ramp(nt, noise(nt, vec, 140.0, 2, 0.6).outputs["Fac"], [(0.35, (0.06, 0.022, 0.01)), (0.65, (0.16, 0.065, 0.028))]).outputs["Color"]
+    cream = ramp(nt, noise(nt, vec, 40.0, 2).outputs["Fac"], [(0.4, (0.72, 0.56, 0.38)), (0.6, (0.82, 0.68, 0.5))]).outputs["Color"]
+    inside = mixc(nt, lay.outputs["Color"], sponge, cream)
+    dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+    outer = nt.nodes.new("ShaderNodeMath"); outer.operation = "LESS_THAN"; outer.inputs[1].default_value = 0.004
+    nt.links.new(dep.outputs["Fac"], outer.inputs[0])
+    col = mixc(nt, outer.outputs[0], inside, glaze)
+    rough = nt.nodes.new("ShaderNodeMix"); rough.data_type = "FLOAT"
+    nt.links.new(outer.outputs[0], rough.inputs["Factor"]); rough.inputs[2].default_value = 0.75; rough.inputs[3].default_value = 0.3
+    nt.links.new(rough.outputs[0], bsdf.inputs["Roughness"])
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -251,7 +285,7 @@ def build():
     for p in me.polygons:
         p.use_smooth = True
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    MATS = {"meat": meat_material, "watermelon": watermelon_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 

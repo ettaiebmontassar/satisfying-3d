@@ -176,22 +176,40 @@ class Collapse:
         self.size = np.array([dx, dy, dz], np.float32)
         n = len(px)
         rng = np.random.default_rng(seed)
-        # point d'arrivée : on s'étale vers l'extérieur (plus on était haut, plus on glisse), puis on empile
+        # point d'arrivée : un tas en dôme (même volume), un peu plus large que l'objet.
+        # Chaque cube va vers une place du dôme du même secteur angulaire et à peu près au même rayon ;
+        # à rayon égal, les plus hauts (ou, si stack='depth', les plus profonds = le cœur) finissent en haut.
         H = shape.H
-        out = 1 + spread * (pz / H) + 0.08 * rng.standard_normal(n)
-        fx = px * out + 0.35 * dx * rng.standard_normal(n)
-        fy = py * out + 0.35 * dy * rng.standard_normal(n)
-        bx = np.floor(fx / dx).astype(np.int64); by = np.floor(fy / dy).astype(np.int64)
-        key = (bx - bx.min()) * (by.max() - by.min() + 1) + (by - by.min())
+        f = 1.0 + spread
+        x0b, x1b, y0b, y1b, _, _ = shape.bbox()
+        gxs = np.arange(x0b * f, x1b * f, dx) + dx / 2; gys = np.arange(y0b * f, y1b * f, dy) + dy / 2
+        BX, BY = np.meshgrid(gxs, gys, indexing="ij"); BX, BY = BX.ravel(), BY.ravel()
+        q = shape.rho(BX / f, BY / f); inside = q < 1
+        BX, BY, q = BX[inside], BY[inside], q[inside]
+        prof = 1 - q ** 2
+        hm = n * dz * 0.92 / max(prof.sum(), 1e-9)
+        for _ in range(30):                                  # hauteur du dôme pour loger tous les cubes
+            cap = np.floor(hm * prof / (dz * 0.92)).astype(np.int64)
+            if cap.sum() >= n:
+                break
+            hm *= 1.04
+        lvl = np.arange(cap.sum()) - np.repeat(np.concatenate([[0], np.cumsum(cap)[:-1]]), cap)
+        sx, sy, sq = np.repeat(BX, cap), np.repeat(BY, cap), np.repeat(q, cap)
+        sz = (lvl + 0.5) * dz * 0.92
+        S = 48
+        def sector(x, y):
+            return np.floor((np.arctan2(y / shape.ay, x / shape.ax) + np.pi) / (2 * np.pi) * S).astype(np.int64) % S
+        rb = 1 if stack == "depth" else 20          # 'depth' : tri par hauteur sur tout le secteur (pas d'anneaux d'écorce)
+        slot_order = np.lexsort((sz, np.floor(sq * rb), sector(sx, sy)))
+        slot_order = slot_order[np.linspace(0, len(slot_order) - 1, n).astype(np.int64)]
         top_ = shape.top(pr)
         side_ = (1 - np.clip(pr, 0, 1)) * min(shape.ax, shape.ay)
         dep_ = np.maximum(0, np.minimum(top_ - pz, side_ * 1.4))
-        order = np.lexsort((dep_ if stack == "depth" else pz, key))   # 'depth' : le cœur finit sur le dessus
-        ks = key[order]
-        first = np.concatenate([[True], ks[1:] != ks[:-1]])
-        grp_start = np.maximum.accumulate(np.where(first, np.arange(n), 0))
-        rank = np.empty(n, np.int64); rank[order] = np.arange(n) - grp_start
-        fz = (rank + 0.5) * dz * 0.92
+        cube_order = np.lexsort((dep_ if stack == "depth" else pz, np.floor(np.clip(pr, 0, 1) * rb), sector(px, py)))
+        fx = np.empty(n); fy = np.empty(n); fz = np.empty(n)
+        fx[cube_order] = sx[slot_order] + 0.3 * dx * rng.standard_normal(n)
+        fy[cube_order] = sy[slot_order] + 0.3 * dy * rng.standard_normal(n)
+        fz[cube_order] = sz[slot_order]
         self.p1 = np.stack([fx, fy, fz], 1).astype(np.float32)
         # départs : l'extérieur s'effrite d'abord, puis le cœur
         self.delay = (0.45 * (1 - np.clip(pr, 0, 1)) + 0.12 * rng.random(n) + 0.25 * (1 - pz / H)).astype(np.float32)
