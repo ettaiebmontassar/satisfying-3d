@@ -1,0 +1,7 @@
+.blender/
+__pycache__/
+frames/
+*.mp4
+*.wav
+youtube_token.json
+client_secret.json

@@ -1,0 +1,16 @@
+{
+  "name": "steak",
+  "title": "How many cuts can a giant steak take? 🔪🥩 #Shorts",
+  "material": "meat",
+  "shape": {"ax": 0.13, "ay": 0.09, "height": 0.05, "edge": 8.0,
+            "wobble": [[2, 0.06, 0.0], [3, -0.05, 0.5], [1, 0.05, 1.6], [5, 0.015, 0.3]]},
+  "intro": 0.4,
+  "rounds": [
+    {"cuts": 10, "dur": 3.2},
+    {"cuts": 50, "dur": 5.0},
+    {"cuts": 150, "dur": 7.0},
+    {"cuts": 500, "dur": 10.0},
+    {"cuts": 1000, "dur": 13.0, "collapse": 3.2}
+  ],
+  "outro": 0.0
+}

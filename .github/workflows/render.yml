@@ -1,0 +1,75 @@
+name: Render a satisfying Short
+
+on:
+  workflow_dispatch:
+    inputs:
+      object:
+        description: "Object file in objects/ (without .json)"
+        default: steak
+        required: true
+      samples:
+        description: "Cycles samples (quality)"
+        default: "24"
+      res:
+        description: "Width in pixels (height = width × 16/9)"
+        default: "1080"
+
+env:
+  BLENDER_VERSION: "4.2.3"
+  PARTS: "20"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Frames of this part
+        id: rng
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import core
+          p = core.Plan(core.load("objects/${{ inputs.object }}.json"))
+          n, k, parts = p.frames, ${{ matrix.part }}, int("${{ env.PARTS }}")
+          print(f"a={k * n // parts}"); print(f"b={(k + 1) * n // parts}")
+          EOF
+      - name: Render 3D frames (Blender Cycles)
+        run: |
+          blender -b --python-exit-code 1 -P scene.py -- "objects/${{ inputs.object }}.json" frames \
+            --frames ${{ steps.rng.outputs.a }} ${{ steps.rng.outputs.b }} --res ${{ inputs.res }} --samples ${{ inputs.samples }}
+      - name: Counters + encode segment
+        run: |
+          python3 overlay.py "objects/${{ inputs.object }}.json" frames "seg_$(printf %02d ${{ matrix.part }}).mp4" \
+            --frames ${{ steps.rng.outputs.a }} ${{ steps.rng.outputs.b }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seg-${{ matrix.part }}
+          path: seg_*.mp4
+          retention-days: 3
+
+  assemble:
+    needs: render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with: { blender: "false" }
+      - uses: actions/download-artifact@v4
+        with: { pattern: "seg-*", path: segs, merge-multiple: true }
+      - name: Sound + final video
+        run: |
+          python3 audio.py "objects/${{ inputs.object }}.json" mix.wav
+          printf "file '%s'\n" "$PWD"/segs/seg_*.mp4 > list.txt
+          ffmpeg -v error -y -f concat -safe 0 -i list.txt -i mix.wav \
+            -af "loudnorm=I=-14:TP=-1.2:LRA=9" -ar 48000 -map 0:v -map 1:a -c:v copy -c:a aac -b:a 256k \
+            -movflags +faststart -shortest "${{ inputs.object }}_final.mp4"
+          ffprobe -v error -show_entries format=duration -of csv=p=0 "${{ inputs.object }}_final.mp4"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: video-${{ inputs.object }}
+          path: ${{ inputs.object }}_final.mp4

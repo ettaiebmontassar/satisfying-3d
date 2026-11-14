@@ -1,0 +1,40 @@
+name: Setup
+description: Python libs, ffmpeg (static build) and Blender (portable, cached)
+inputs:
+  blender:
+    description: "Install Blender"
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.11" }
+    - shell: bash
+      run: pip install -q numpy scipy pillow
+    - name: ffmpeg (static)
+      shell: bash
+      run: |
+        curl -sSL -o ff.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+        tar xf ff.tar.xz && echo "$PWD/$(ls -d ffmpeg-master-latest-linux64-gpl)/bin" >> "$GITHUB_PATH" && rm ff.tar.xz
+    - name: Blender cache
+      if: inputs.blender == 'true'
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/blender
+        key: blender-${{ env.BLENDER_VERSION }}
+    - name: Download Blender
+      if: inputs.blender == 'true' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p ~/blender
+        V=${BLENDER_VERSION}; M=${V%.*}
+        curl -sSL "https://download.blender.org/release/Blender${M}/blender-${V}-linux-x64.tar.xz" | tar xJ -C ~/blender --strip-components=1
+    - name: Blender on PATH + system libs
+      if: inputs.blender == 'true'
+      shell: bash
+      run: |
+        echo "$HOME/blender" >> "$GITHUB_PATH"
+        sudo apt-get update -qq -o Acquire::Retries=3 || true
+        sudo apt-get install -y -qq --no-install-recommends libxrender1 libxi6 libxkbcommon0 libsm6 libxxf86vm1 libxfixes3 libgl1 libegl1 || true
+        ~/blender/blender --version | head -1
