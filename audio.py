@@ -61,7 +61,7 @@ def main():
             else:
                 add(t - 0.03, chop(rng.uniform(0.8, 1.2)), g * rng.uniform(0.8, 1.0))
         # effondrement : pluie de petits cubes (échantillon des arrivées)
-        C = core.Collapse(plan.shape, r["nxyz"], cap=60_000, seed=i)
+        C = core.Collapse(plan.shape, r["nxyz"], cap=60_000, seed=i, stack=plan.cfg.get("stack", "z"))
         land = C.delay + C.T
         k = min(len(land), 900)
         pick = rng.choice(len(land), k, replace=False)

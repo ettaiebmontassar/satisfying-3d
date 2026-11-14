@@ -19,6 +19,7 @@ class Shape:
         self.ax, self.ay, self.H = s["ax"], s["ay"], s["height"]
         self.wob = s.get("wobble", [[2, 0.06, 0.0], [3, -0.05, 0.5], [1, 0.04, 1.6]])
         self.edge = s.get("edge", 8.0)
+        self.power = s.get("power", 0.35)
         th = np.linspace(0, 2 * np.pi, 720)
         self.rmax = float(self.r(th).max())
 
@@ -35,7 +36,7 @@ class Shape:
     def top(self, rho):
         """Hauteur du dessus pour un rayon normalisé ρ (0 au centre, 1 au bord)."""
         rho = np.clip(rho, 0, 1)
-        return self.H * (1 - rho ** self.edge) ** 0.35
+        return self.H * (1 - rho ** self.edge) ** self.power
 
     def bbox(self):
         return (-self.ax * self.rmax, self.ax * self.rmax, -self.ay * self.rmax, self.ay * self.rmax, 0.0, self.H)
@@ -151,7 +152,7 @@ def count_cubes(shape, nx, ny, nz):
 class Collapse:
     """Cubes d'un round et leur chute (fausse physique au ralenti, déterministe)."""
 
-    def __init__(self, shape, nxyz, cap=400_000, seed=0, g=1.4, spread=0.18):
+    def __init__(self, shape, nxyz, cap=400_000, seed=0, g=1.4, spread=0.18, stack="z"):
         nx, ny, nz = nxyz
         gx, gy, gz = nx + 1, ny + 1, nz + 1
         n_true = count_cubes(shape, nx, ny, nz)
@@ -167,6 +168,10 @@ class Collapse:
         level = np.arange(reps.sum()) - np.repeat(start, reps)
         pz = (level + 0.5) * dz
         self.p0 = np.stack([px, py, pz], 1).astype(np.float32)
+        # profondeur sous la surface (écorce, croûte…) : verticale, ou depuis le bord pour les flancs raides
+        top = shape.top(pr)
+        side = (1 - np.clip(pr, 0, 1)) * min(shape.ax, shape.ay)
+        self.depth = np.maximum(0, np.minimum(top - pz, side * 1.4)).astype(np.float32)
         self.size = np.array([dx, dy, dz], np.float32)
         n = len(px)
         rng = np.random.default_rng(seed)
@@ -177,7 +182,10 @@ class Collapse:
         fy = py * out + 0.35 * dy * rng.standard_normal(n)
         bx = np.floor(fx / dx).astype(np.int64); by = np.floor(fy / dy).astype(np.int64)
         key = (bx - bx.min()) * (by.max() - by.min() + 1) + (by - by.min())
-        order = np.lexsort((pz, key))
+        top_ = shape.top(pr)
+        side_ = (1 - np.clip(pr, 0, 1)) * min(shape.ax, shape.ay)
+        dep_ = np.maximum(0, np.minimum(top_ - pz, side_ * 1.4))
+        order = np.lexsort((dep_ if stack == "depth" else pz, key))   # 'depth' : le cœur finit sur le dessus
         ks = key[order]
         first = np.concatenate([[True], ks[1:] != ks[:-1]])
         grp_start = np.maximum.accumulate(np.where(first, np.arange(n), 0))

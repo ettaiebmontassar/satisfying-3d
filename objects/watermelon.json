@@ -1,0 +1,16 @@
+{
+  "name": "watermelon",
+  "material": "watermelon",
+  "stack": "depth",
+  "shape": {"ax": 0.135, "ay": 0.1, "height": 0.1, "edge": 2.0, "power": 0.5,
+            "wobble": [[2, 0.03, 0.0], [3, -0.015, 0.5]]},
+  "intro": 0.4,
+  "rounds": [
+    {"cuts": 10, "dur": 3.2},
+    {"cuts": 50, "dur": 5.0},
+    {"cuts": 150, "dur": 7.0},
+    {"cuts": 500, "dur": 10.0},
+    {"cuts": 1000, "dur": 13.0, "collapse": 3.2}
+  ],
+  "outro": 0.0
+}

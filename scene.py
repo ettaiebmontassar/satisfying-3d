@@ -64,20 +64,77 @@ def noise(nt, vec, scale, detail=6, rough=0.55, dist=0.0):
 
 
 # ================================================================ matériaux
+def coords(nt, coord_mode):
+    """Coordonnées dans l'objet entier : directes (objet) ou reconstituées pour chaque cube (instances)."""
+    if coord_mode == "object":
+        tc = nt.nodes.new("ShaderNodeTexCoord"); return tc.outputs["Object"]
+    at = nt.nodes.new("ShaderNodeAttribute"); at.attribute_type = "INSTANCER"; at.attribute_name = "orig"
+    sz = nt.nodes.new("ShaderNodeAttribute"); sz.attribute_type = "INSTANCER"; sz.attribute_name = "scl"
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    mul = nt.nodes.new("ShaderNodeVectorMath"); mul.operation = "MULTIPLY"
+    nt.links.new(tc.outputs["Object"], mul.inputs[0]); nt.links.new(sz.outputs["Vector"], mul.inputs[1])
+    add = nt.nodes.new("ShaderNodeVectorMath"); add.operation = "ADD"
+    nt.links.new(at.outputs["Vector"], add.inputs[0]); nt.links.new(mul.outputs[0], add.inputs[1])
+    return add.outputs[0]
+
+
+def mixc(nt, fac, a, b):
+    """Mélange de couleurs ; a, b = sorties de nœuds ou tuples RGB."""
+    mx = nt.nodes.new("ShaderNodeMix"); mx.data_type = "RGBA"
+    nt.links.new(fac, mx.inputs["Factor"])
+    for sock, v in ((mx.inputs[6], a), (mx.inputs[7], b)):
+        if isinstance(v, tuple):
+            sock.default_value = (*v, 1)
+        else:
+            nt.links.new(v, sock)
+    return mx.outputs[2]
+
+
+def watermelon_material(name, coord_mode):
+    """Pastèque : écorce rayée vert foncé / vert clair ; dans les cubes, écorce → blanc → chair rouge à pépins."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    mp = nt.nodes.new("ShaderNodeMapping"); mp.inputs["Scale"].default_value = (1.0, 1.0, 1.0)
+    nt.links.new(vec, mp.inputs[0])
+    wave = nt.nodes.new("ShaderNodeTexWave"); wave.bands_direction = "Y"; wave.inputs["Scale"].default_value = 9.0
+    wave.inputs["Distortion"].default_value = 9.0; wave.inputs["Detail"].default_value = 3.0
+    nt.links.new(mp.outputs[0], wave.inputs[0])
+    stripes = ramp(nt, wave.outputs["Fac"], [(0.35, (0.012, 0.07, 0.015)), (0.55, (0.09, 0.26, 0.05))])
+    rind = stripes.outputs["Color"]
+    if coord_mode == "object":
+        col = cut_lines(nt, rind, (0.3, 0.02, 0.03))
+        bsdf.inputs["Roughness"].default_value = 0.32; bsdf.inputs["Coat Weight"].default_value = 0.3
+    else:
+        dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+        k = nt.nodes.new("ShaderNodeMath"); k.operation = "MULTIPLY"; k.inputs[1].default_value = 33.3   # 3 cm → 1
+        nt.links.new(dep.outputs["Fac"], k.inputs[0])
+        flesh = ramp(nt, noise(nt, vec, 8.0, 3).outputs["Fac"], [(0.3, (0.72, 0.03, 0.05)), (0.7, (0.95, 0.12, 0.12))])
+        layers = ramp(nt, k.outputs[0], [(0.0, (0, 0, 0)), (0.13, (0, 0, 0)), (0.17, (0.5, 0.5, 0.5)), (0.3, (0.5, 0.5, 0.5)), (0.38, (1, 1, 1))])
+        # 0 = écorce, 0.5 = blanc, 1 = chair
+        lo = nt.nodes.new("ShaderNodeMath"); lo.operation = "MULTIPLY"; lo.inputs[1].default_value = 2.0; lo.use_clamp = True
+        nt.links.new(layers.outputs["Color"], lo.inputs[0])
+        hi = nt.nodes.new("ShaderNodeMath"); hi.operation = "MULTIPLY_ADD"; hi.inputs[1].default_value = 2.0; hi.inputs[2].default_value = -1.0
+        hi.use_clamp = True; nt.links.new(layers.outputs["Color"], hi.inputs[0])
+        col = mixc(nt, lo.outputs[0], rind, (0.86, 0.9, 0.7))
+        col = mixc(nt, hi.outputs[0], col, flesh.outputs["Color"])
+        vor = nt.nodes.new("ShaderNodeTexVoronoi"); vor.inputs["Scale"].default_value = 38.0
+        nt.links.new(vec, vor.inputs["Vector"])
+        seed = nt.nodes.new("ShaderNodeMath"); seed.operation = "LESS_THAN"; seed.inputs[1].default_value = 0.1
+        nt.links.new(vor.outputs["Distance"], seed.inputs[0])
+        deep = nt.nodes.new("ShaderNodeMath"); deep.operation = "GREATER_THAN"; deep.inputs[1].default_value = 0.6
+        nt.links.new(k.outputs[0], deep.inputs[0])
+        both = nt.nodes.new("ShaderNodeMath"); both.operation = "MULTIPLY"
+        nt.links.new(seed.outputs[0], both.inputs[0]); nt.links.new(deep.outputs[0], both.inputs[1])
+        col = mixc(nt, both.outputs[0], col, (0.02, 0.015, 0.012))
+        bsdf.inputs["Roughness"].default_value = 0.28; bsdf.inputs["Coat Weight"].default_value = 0.25
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
-    if coord_mode == "object":
-        tc = nt.nodes.new("ShaderNodeTexCoord"); vec = tc.outputs["Object"]
-    else:
-        at = nt.nodes.new("ShaderNodeAttribute"); at.attribute_type = "INSTANCER"; at.attribute_name = "orig"
-        sz = nt.nodes.new("ShaderNodeAttribute"); sz.attribute_type = "INSTANCER"; sz.attribute_name = "scl"
-        tc = nt.nodes.new("ShaderNodeTexCoord")
-        mul = nt.nodes.new("ShaderNodeVectorMath"); mul.operation = "MULTIPLY"
-        nt.links.new(tc.outputs["Object"], mul.inputs[0]); nt.links.new(sz.outputs["Vector"], mul.inputs[1])
-        add = nt.nodes.new("ShaderNodeVectorMath"); add.operation = "ADD"
-        nt.links.new(at.outputs["Vector"], add.inputs[0]); nt.links.new(mul.outputs[0], add.inputs[1])
-        vec = add.outputs[0]          # position d'origine de ce point du cube dans le steak entier
+    vec = coords(nt, coord_mode)
     marb = noise(nt, vec, 16.0, 6, 0.55, 1.2)
     veins = ramp(nt, marb.outputs["Fac"], [(0.0, (0.0, 0, 0)), (0.488, (0.0, 0, 0)), (0.5, (1, 1, 1)), (0.512, (0.0, 0, 0))])
     tone = noise(nt, vec, 6.0, 3, 0.5)
@@ -100,7 +157,7 @@ def meat_material(name, coord_mode):
 CUT = {}   # entrées du shader de coupes, mises à jour à chaque image
 
 
-def cut_lines(nt, col):
+def cut_lines(nt, col, line_col=(0.16, 0.02, 0.02)):
     """Assombrit de fines lignes aux plans de coupe déjà faits (sur chaque axe : origine, pas, limite)."""
     tc = nt.nodes.new("ShaderNodeTexCoord"); sep = nt.nodes.new("ShaderNodeSeparateXYZ")
     nt.links.new(tc.outputs["Object"], sep.inputs[0])
@@ -122,7 +179,7 @@ def cut_lines(nt, col):
         else:
             mx = nt.nodes.new("ShaderNodeMath"); mx.operation = "MAXIMUM"; nt.links.new(total.outputs[0], mx.inputs[0]); nt.links.new(both.outputs[0], mx.inputs[1]); total = mx
     mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"
-    nt.links.new(total.outputs[0], mix.inputs["Factor"]); nt.links.new(col, mix.inputs[6]); mix.inputs[7].default_value = (0.16, 0.02, 0.02, 1)
+    nt.links.new(total.outputs[0], mix.inputs["Factor"]); nt.links.new(col, mix.inputs[6]); mix.inputs[7].default_value = (*line_col, 1)
     return mix.outputs[2]
 
 
@@ -194,14 +251,16 @@ def build():
     for p in me.polygons:
         p.use_smooth = True
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    steak.data.materials.append(meat_material("meat_whole", "object"))
+    MATS = {"meat": meat_material, "watermelon": watermelon_material}
+    material = MATS[cfg.get("material", "meat")]
+    steak.data.materials.append(material("whole", "object"))
 
     # cubes : nuage de points + Geometry Nodes (instances)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -5))
     proto = bpy.context.object; proto.name = "proto"
     pb = proto.modifiers.new("bev", "BEVEL"); pb.width = 0.06; pb.segments = 2
     bpy.ops.object.modifier_apply(modifier="bev")
-    proto.data.materials.append(meat_material("meat_cube", "instancer"))
+    proto.data.materials.append(material("cube", "instancer"))
     proto.hide_render = True
     cme = bpy.data.meshes.new("cubes"); cubes = bpy.data.objects.new("cubes", cme); sc.collection.objects.link(cubes)
     cubes.cycles.use_motion_blur = False
@@ -278,7 +337,7 @@ def knife_keys(knife):
     ROT = {0: (0, 0, 0), 1: (0, 0, math.pi / 2), 2: (0, math.pi / 2, 0)}
     for r in PLAN.rounds:
         times, cuts = r["times"], r["cuts"]
-        key(r["t0"], (x1 + 0.08, -0.15, UP + 0.05), ROT[0])
+        key(r["t0"], (cuts[0][1], -0.17, UP + 0.05), ROT[0])      # déjà au-dessus de la 1re coupe (pas de traversée)
         prev = r["t0"]
         for k, ((ax, c), t) in enumerate(zip(cuts, times)):
             nxt = times[k + 1] if k + 1 < len(times) else r["t_cut_end"]
@@ -322,7 +381,7 @@ def main():
         steak.hide_render = collapsed
         if collapsed:
             if cur["i"] != i:
-                cur["i"], cur["C"] = i, core.Collapse(SH, r["nxyz"], seed=i)
+                cur["i"], cur["C"] = i, core.Collapse(SH, r["nxyz"], seed=i, stack=cfg.get("stack", "z"))
                 set_points(cubes, cur["C"])
             C = cur["C"]; p, rot = C.at(t - r["t_col"])
             update_points(cubes, p, rot)
@@ -341,6 +400,7 @@ def set_points(obj, C):
     a = me.attributes.new("orig", "FLOAT_VECTOR", "POINT"); a.data.foreach_set("vector", C.p0.ravel())
     s = me.attributes.new("scl", "FLOAT_VECTOR", "POINT"); s.data.foreach_set("vector", np.tile(C.size * 0.93, (C.n, 1)).ravel())
     me.attributes.new("rot", "FLOAT_VECTOR", "POINT")
+    dp = me.attributes.new("depth", "FLOAT", "POINT"); dp.data.foreach_set("value", C.depth)
     old = obj.data; obj.data = me
     if old.users == 0:
         bpy.data.meshes.remove(old)
