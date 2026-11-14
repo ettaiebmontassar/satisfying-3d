@@ -9,10 +9,17 @@ on:
         required: true
       samples:
         description: "Cycles samples (quality)"
-        default: "24"
+        default: "12"
       res:
-        description: "Width in pixels (height = width × 16/9)"
-        default: "1080"
+        description: "Render width in pixels (the final video is upscaled to 1080×1920)"
+        default: "720"
+      upload:
+        description: "Send to YouTube (as PRIVATE, or scheduled with publish_at)"
+        type: boolean
+        default: false
+      publish_at:
+        description: "Optional publish date, e.g. 2026-11-16T18:00+01:00"
+        default: ""
 
 env:
   BLENDER_VERSION: "4.2.3"
@@ -66,10 +73,23 @@ jobs:
           python3 audio.py "objects/${{ inputs.object }}.json" mix.wav
           printf "file '%s'\n" "$PWD"/segs/seg_*.mp4 > list.txt
           ffmpeg -v error -y -f concat -safe 0 -i list.txt -i mix.wav \
-            -af "loudnorm=I=-14:TP=-1.2:LRA=9" -ar 48000 -map 0:v -map 1:a -c:v copy -c:a aac -b:a 256k \
+            -vf "scale=1080:1920:flags=lanczos" -c:v libx264 -preset slow -crf 16 -pix_fmt yuv420p \
+            -af "loudnorm=I=-14:TP=-1.2:LRA=9" -ar 48000 -map 0:v -map 1:a -c:a aac -b:a 256k \
             -movflags +faststart -shortest "${{ inputs.object }}_final.mp4"
           ffprobe -v error -show_entries format=duration -of csv=p=0 "${{ inputs.object }}_final.mp4"
       - uses: actions/upload-artifact@v4
         with:
           name: video-${{ inputs.object }}
           path: ${{ inputs.object }}_final.mp4
+      - name: Send to YouTube
+        if: inputs.upload
+        env:
+          YT_TOKEN: ${{ secrets.YT_TOKEN }}
+        run: |
+          pip install -q google-api-python-client google-auth-oauthlib
+          printf '%s' "$YT_TOKEN" > youtube_token.json
+          ARGS=()
+          if [ -n "${{ inputs.publish_at }}" ]; then ARGS+=(--publish-at "${{ inputs.publish_at }}"); fi
+          python3 tools/upload_youtube.py "${{ inputs.object }}_final.mp4" "objects/${{ inputs.object }}.meta.json" "${ARGS[@]}" | tee yt.log
+          cat yt.log >> "$GITHUB_STEP_SUMMARY"
+          rm -f youtube_token.json
