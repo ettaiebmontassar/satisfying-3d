@@ -252,6 +252,36 @@ def pizza_material(name, coord_mode, radius=0.13):
     return m
 
 
+def avocado_material(name, coord_mode, pit=(0.025, 0.0, 0.012), pit_r=0.038):
+    """Avocat : peau sombre granuleuse ; chair vert vif sous la peau → jaune pâle au cœur ; gros noyau brun."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    skin = ramp(nt, noise(nt, vec, 40.0, 4).outputs["Fac"], [(0.35, (0.012, 0.03, 0.008)), (0.65, (0.05, 0.09, 0.02))]).outputs["Color"]
+    bumps = nt.nodes.new("ShaderNodeTexVoronoi"); bumps.inputs["Scale"].default_value = 180.0
+    nt.links.new(vec, bumps.inputs["Vector"])
+    if coord_mode == "object":
+        col = cut_lines(nt, skin, (0.7, 0.8, 0.25))
+        bump = nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.5
+        nt.links.new(bumps.outputs["Distance"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        bsdf.inputs["Roughness"].default_value = 0.45; bsdf.inputs["Coat Weight"].default_value = 0.2
+        nt.links.new(col, bsdf.inputs["Base Color"])
+        return m
+    dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+    k = nt.nodes.new("ShaderNodeMath"); k.operation = "MULTIPLY"; k.inputs[1].default_value = 1 / 0.02
+    nt.links.new(dep.outputs["Fac"], k.inputs[0])
+    flesh = ramp(nt, k.outputs[0], [(0.0, (0.012, 0.03, 0.008)), (0.1, (0.012, 0.03, 0.008)), (0.16, (0.08, 0.34, 0.015)),
+                                    (0.6, (0.3, 0.55, 0.04)), (1.0, (0.6, 0.66, 0.14))]).outputs["Color"]
+    d = nt.nodes.new("ShaderNodeVectorMath"); d.operation = "DISTANCE"; d.inputs[1].default_value = pit
+    nt.links.new(vec, d.inputs[0])
+    inpit = nt.nodes.new("ShaderNodeMath"); inpit.operation = "LESS_THAN"; inpit.inputs[1].default_value = pit_r
+    nt.links.new(d.outputs["Value"], inpit.inputs[0])
+    pitc = ramp(nt, noise(nt, vec, 60.0, 3).outputs["Fac"], [(0.35, (0.2, 0.08, 0.025)), (0.65, (0.36, 0.16, 0.05))]).outputs["Color"]
+    col = mixc(nt, inpit.outputs[0], flesh, pitc)
+    bsdf.inputs["Roughness"].default_value = 0.4; bsdf.inputs["Coat Weight"].default_value = 0.25
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -355,9 +385,12 @@ def build():
 
     # plan de travail + mur
     bpy.ops.mesh.primitive_plane_add(size=6, location=(0, 0, -0.024))
-    bpy.context.object.data.materials.append(plain_material("counter", (0.05, 0.048, 0.046), (0.09, 0.085, 0.08), 4.0, 0.6))
+    th = cfg.get("theme", {})
+    cc = th.get("counter", [[0.05, 0.048, 0.046], [0.09, 0.085, 0.08]])
+    wc = th.get("wall", [[0.09, 0.03, 0.018], [0.17, 0.06, 0.03]])
+    bpy.context.object.data.materials.append(plain_material("counter", tuple(cc[0]), tuple(cc[1]), 4.0, 0.6))
     bpy.ops.mesh.primitive_plane_add(size=6, location=(0, 0.75, 1.0), rotation=(math.pi / 2, 0, 0))
-    bpy.context.object.data.materials.append(plain_material("wall", (0.09, 0.03, 0.018), (0.17, 0.06, 0.03), 2.5, 0.9))
+    bpy.context.object.data.materials.append(plain_material("wall", tuple(wc[0]), tuple(wc[1]), 2.5, 0.9))
     # planche
     bpy.ops.mesh.primitive_cube_add(location=(0, 0, -0.012))
     b = bpy.context.object; b.scale = (0.24, 0.17, 0.012)
@@ -372,7 +405,7 @@ def build():
     for p in me.polygons:
         p.use_smooth = True
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 
@@ -472,6 +505,10 @@ def knife_keys(knife):
                 key(t - half, (side * 0.36, -0.17, c), ROT[2]); key(t + half, (-side * 0.36, -0.17, c), ROT[2])
             prev = t
         key(r["t_col"], (x1 + 0.1, -0.2, UP + 0.1), ROT[0]); key(r["t_end"] - 0.01, (x1 + 0.4, -0.4, UP + 0.4), ROT[0])
+    if PLAN.loop:                                           # le couteau revient à sa position de départ
+        first = PLAN.rounds[0]["cuts"][0][1]
+        key(PLAN.t_loop + 0.05, (x1 + 0.4, -0.4, UP + 0.4), ROT[0])
+        key(PLAN.total, (first, -0.17, UP + 0.05), ROT[0])
     for fc in knife.animation_data.action.fcurves:
         for kp in fc.keyframe_points:
             kp.interpolation = "LINEAR"
@@ -498,13 +535,19 @@ def main():
             k_done = max(0, min(n_ax, done - lo))
             lim.outputs[0].default_value = (org[ax] + step * (k_done + 0.5)) if k_done > 0 else -10.0
             CUT[(ax, "w")].outputs[0].default_value = min(0.06, 0.0006 / step)     # ~0,6 mm de large
-        collapsed = t >= r["t_col"]
+        back = PLAN.rewind(t)
+        if back >= 0.999:                                   # fin de boucle : objet entier, sans coupes = 1re image
+            for ax in range(3):
+                CUT[ax][2].outputs[0].default_value = -10.0
+        collapsed = t >= r["t_col"] and back < 0.999
         steak.hide_render = collapsed
         if collapsed:
             if cur["i"] != i:
                 cur["i"], cur["C"] = i, core.Collapse(SH, r["nxyz"], seed=i, stack=cfg.get("stack", "z"))
                 set_points(cubes, cur["C"])
             C = cur["C"]; p, rot = C.at(t - r["t_col"])
+            if back > 0:                                    # rembobinage : chaque cube regagne sa place
+                p = C.p1 + (C.p0 - C.p1) * back; rot = C.rot1 * (1 - back)
             update_points(cubes, p, rot)
             cubes.hide_render = False
         else:

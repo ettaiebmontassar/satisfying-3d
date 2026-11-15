@@ -42,7 +42,7 @@ def pill(img, text, cy, size, a=1.0):
 
 def subscribe_times(plan):
     """(apparition, clic) du bouton d'abonnement : fin de vidéo, quand le dernier compteur est fini."""
-    t0 = plan.total - 2.9
+    t0 = plan.t_loop - 2.9
     return t0, t0 + 1.1
 
 
@@ -97,9 +97,11 @@ def compose(plan, src, f):
     if hook and t < plan.cfg.get("hook_dur", 3.0):
         k = min(1.0, (plan.cfg.get("hook_dur", 3.0) - t) / 0.3)        # disparaît en fondu
         pill(img, hook, 0.2 * H, 46, k)
+    elif hook and plan.loop and t > plan.total - 0.35:                 # revient pour la boucle
+        pill(img, hook, 0.2 * H, 46, min(1.0, (t - (plan.total - 0.35)) / 0.3))
     counter(img, cuts, "CUTS", 0.085 * H, 150, 44, pop_cut)
     counter(img, cubes, "CUBES", 0.765 * H, 96, 40, pop_cube)
-    if plan.cfg.get("subscribe", True):
+    if plan.cfg.get("subscribe", True) and t < plan.t_loop + 0.15:
         subscribe(img, t, *subscribe_times(plan))
     return img.convert("RGB")
 

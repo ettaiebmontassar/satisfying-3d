@@ -106,8 +106,17 @@ class Plan:
             self.rounds.append(dict(n=n, nxyz=(nx, ny, nz), cuts=cuts, times=times, t0=t, t_cut_end=t_cut_end,
                                     t_col=t_col, t_end=t_end, cubes=count_cubes(self.shape, nx, ny, nz)))
             t = t_end
-        self.total = t + cfg.get("outro", 0.0)
+        self.loop = float(cfg.get("loop", 0.0))             # rembobinage final (s) : la fin rejoint la 1re image
+        self.t_loop = t
+        self.total = t + self.loop + cfg.get("outro", 0.0)
         self.frames = int(math.ceil(self.total * FPS))
+
+    def rewind(self, t):
+        """Avancement du rembobinage final (0 → 1), 0 avant."""
+        if not self.loop or t < self.t_loop:
+            return 0.0
+        u = min(1.0, (t - self.t_loop) / (self.loop * 0.9))
+        return u * u * (3 - 2 * u)
 
     def round_at(self, t):
         for i, r in enumerate(self.rounds):
@@ -118,6 +127,9 @@ class Plan:
     def counters(self, t):
         """(coupes faites, cubes affichés) à l'instant t."""
         i, r = self.round_at(t)
+        if self.loop and t >= self.t_loop:                   # compteurs qui redescendent à 0
+            k = self.rewind(t)
+            return int(round(r["n"] * (1 - k))), int(round(r["cubes"] * (1 - k)))
         cuts = int(np.searchsorted(r["times"], t, side="right"))
         if t < r["t_col"]:
             return cuts, 0

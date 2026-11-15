@@ -77,6 +77,13 @@ def main():
         n = int(0.9 * SR); tt_ = np.arange(n) / SR
         bell = (np.sin(2 * np.pi * 1320 * tt_) + 0.5 * np.sin(2 * np.pi * 2640 * tt_)) * np.exp(-tt_ / 0.25) * 0.35
         add(tc + 0.12, bell, 1.0)
+    if plan.loop:                                             # rembobinage : souffle qui monte + petit « tac » final
+        d = plan.loop
+        n = int(d * SR); tt_ = np.arange(n) / SR
+        f = 300 * (8 ** (tt_ / d))
+        rise = bp(rng.standard_normal(n), 400, 6000) * (tt_ / d) ** 1.5 * 0.4 + np.sin(2 * np.pi * np.cumsum(f) / SR) * 0.08 * (tt_ / d)
+        add(plan.t_loop, rise, 1.0)
+        add(plan.total - 0.06, chop(0.7), 0.6)
     # petite pièce : réverbération courte
     ir_n = int(0.35 * SR); ir = rng.standard_normal(ir_n) * np.exp(-np.arange(ir_n) / SR / 0.08) * 0.04; ir[0] = 1
     y = fftconvolve(out, ir)[: len(out)]
