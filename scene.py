@@ -207,6 +207,51 @@ def orange_material(name, coord_mode):
     return m
 
 
+def pizza_material(name, coord_mode, radius=0.13):
+    """Pizza : croûte dorée sur le bord, fromage fondu doré + pepperoni dessus ; pâte claire à l'intérieur des cubes."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    flat = nt.nodes.new("ShaderNodeVectorMath"); flat.operation = "MULTIPLY"; flat.inputs[1].default_value = (1, 1, 0)
+    nt.links.new(vec, flat.inputs[0])
+    ln = nt.nodes.new("ShaderNodeVectorMath"); ln.operation = "LENGTH"; nt.links.new(flat.outputs[0], ln.inputs[0])
+    rr = nt.nodes.new("ShaderNodeMath"); rr.operation = "DIVIDE"; rr.inputs[1].default_value = radius
+    nt.links.new(ln.outputs["Value"], rr.inputs[0])
+    crust_m = nt.nodes.new("ShaderNodeMath"); crust_m.operation = "GREATER_THAN"; crust_m.inputs[1].default_value = 0.84
+    nt.links.new(rr.outputs[0], crust_m.inputs[0])
+    crust = ramp(nt, noise(nt, vec, 60.0, 4).outputs["Fac"], [(0.3, (0.25, 0.08, 0.01)), (0.55, (0.5, 0.22, 0.04)), (0.75, (0.62, 0.34, 0.1))]).outputs["Color"]
+    cheese = ramp(nt, noise(nt, vec, 45.0, 5, 0.6, 0.8).outputs["Fac"], [(0.3, (0.55, 0.22, 0.01)), (0.6, (0.7, 0.36, 0.03)), (0.78, (0.38, 0.12, 0.01))]).outputs["Color"]
+    pep_v = nt.nodes.new("ShaderNodeTexVoronoi"); pep_v.inputs["Scale"].default_value = 17.0; pep_v.inputs["Randomness"].default_value = 0.55
+    nt.links.new(flat.outputs[0], pep_v.inputs["Vector"])
+    pep = nt.nodes.new("ShaderNodeMath"); pep.operation = "LESS_THAN"; pep.inputs[1].default_value = 0.3
+    nt.links.new(pep_v.outputs["Distance"], pep.inputs[0])
+    pep_col = ramp(nt, noise(nt, vec, 80.0, 3).outputs["Fac"], [(0.35, (0.32, 0.015, 0.01)), (0.65, (0.55, 0.035, 0.02))]).outputs["Color"]
+    top = mixc(nt, pep.outputs[0], cheese, pep_col)
+    top = mixc(nt, crust_m.outputs[0], top, crust)
+    if coord_mode == "object":
+        col = cut_lines(nt, top, (0.98, 0.9, 0.7))
+        bsdf.inputs["Roughness"].default_value = 0.55
+    else:
+        # dans chaque cube : garniture sur la partie haute (z > 1 cm), pâte en dessous ; croûte dorée sur le bord extérieur
+        dough = ramp(nt, noise(nt, vec, 120.0, 3).outputs["Fac"], [(0.35, (0.58, 0.38, 0.16)), (0.65, (0.7, 0.5, 0.25))]).outputs["Color"]
+        sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(vec, sep.inputs[0])
+        high = nt.nodes.new("ShaderNodeMath"); high.operation = "GREATER_THAN"; high.inputs[1].default_value = 0.0105
+        nt.links.new(sep.outputs[2], high.inputs[0])
+        inner = nt.nodes.new("ShaderNodeMath"); inner.operation = "SUBTRACT"; inner.inputs[0].default_value = 1.0
+        nt.links.new(crust_m.outputs[0], inner.inputs[1])
+        topping = nt.nodes.new("ShaderNodeMath"); topping.operation = "MULTIPLY"
+        nt.links.new(high.outputs[0], topping.inputs[0]); nt.links.new(inner.outputs[0], topping.inputs[1])
+        dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+        shell = nt.nodes.new("ShaderNodeMath"); shell.operation = "LESS_THAN"; shell.inputs[1].default_value = 0.004
+        nt.links.new(dep.outputs["Fac"], shell.inputs[0])
+        rimc = nt.nodes.new("ShaderNodeMath"); rimc.operation = "MULTIPLY"
+        nt.links.new(shell.outputs[0], rimc.inputs[0]); nt.links.new(crust_m.outputs[0], rimc.inputs[1])
+        col = mixc(nt, topping.outputs[0], dough, top)
+        col = mixc(nt, rimc.outputs[0], col, crust)
+        bsdf.inputs["Roughness"].default_value = 0.55
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -327,7 +372,7 @@ def build():
     for p in me.polygons:
         p.use_smooth = True
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 

@@ -20,6 +20,7 @@ class Shape:
         self.wob = s.get("wobble", [[2, 0.06, 0.0], [3, -0.05, 0.5], [1, 0.04, 1.6]])
         self.edge = s.get("edge", 8.0)
         self.power = s.get("power", 0.35)
+        self.rim = s.get("rim")                              # [hauteur, rayon normalisé, largeur]
         th = np.linspace(0, 2 * np.pi, 720)
         self.rmax = float(self.r(th).max())
 
@@ -36,10 +37,14 @@ class Shape:
     def top(self, rho):
         """Hauteur du dessus pour un rayon normalisé ρ (0 au centre, 1 au bord)."""
         rho = np.clip(rho, 0, 1)
-        return self.H * (1 - rho ** self.edge) ** self.power
+        h = self.H * (1 - rho ** self.edge) ** self.power
+        if self.rim:                                       # bord gonflé (croûte de pizza…)
+            rh, rc, rw = self.rim
+            h = h + rh * np.exp(-((rho - rc) / rw) ** 2) * (1 - rho ** 40)
+        return h
 
     def bbox(self):
-        return (-self.ax * self.rmax, self.ax * self.rmax, -self.ay * self.rmax, self.ay * self.rmax, 0.0, self.H)
+        return (-self.ax * self.rmax, self.ax * self.rmax, -self.ay * self.rmax, self.ay * self.rmax, 0.0, self.H + (self.rim[0] if self.rim else 0.0))
 
     def mesh(self, rings=48, segs=192):
         """Sommets/faces d'un solide fermé : dessus bombé + dessous plat (bords soudés à ρ = 1)."""
@@ -146,7 +151,7 @@ def count_cubes(shape, nx, ny, nz):
         X, Y = np.meshgrid(xs, ys, indexing="ij")
         rho = shape.rho(X, Y)
         h = np.where(rho < 1, shape.top(rho), 0.0)
-        tot += int(np.clip(np.floor(h / ((shape.H) / gz) + 0.5), 0, gz).sum())
+        tot += int(np.clip(np.floor(h / (shape.bbox()[5] / gz) + 0.5), 0, gz).sum())
     return tot
 
 
@@ -199,13 +204,14 @@ class Collapse:
         S = 48
         def sector(x, y):
             return np.floor((np.arctan2(y / shape.ay, x / shape.ax) + np.pi) / (2 * np.pi) * S).astype(np.int64) % S
-        rb = 1 if stack == "depth" else 20          # 'depth' : tri par hauteur sur tout le secteur (pas d'anneaux d'écorce)
+        rb = 1 if stack in ("depth", "surface") else 20          # 'depth' : tri par hauteur sur tout le secteur (pas d'anneaux d'écorce)
         slot_order = np.lexsort((sz, np.floor(sq * rb), sector(sx, sy)))
         slot_order = slot_order[np.linspace(0, len(slot_order) - 1, n).astype(np.int64)]
         top_ = shape.top(pr)
         side_ = (1 - np.clip(pr, 0, 1)) * min(shape.ax, shape.ay)
         dep_ = np.maximum(0, np.minimum(top_ - pz, side_ * 1.4))
-        cube_order = np.lexsort((dep_ if stack == "depth" else pz, np.floor(np.clip(pr, 0, 1) * rb), sector(px, py)))
+        hk = {"depth": dep_, "surface": -dep_}.get(stack, pz)         # surface : la garniture finit sur le dessus
+        cube_order = np.lexsort((hk, np.floor(np.clip(pr, 0, 1) * rb), sector(px, py)))
         fx = np.empty(n); fy = np.empty(n); fz = np.empty(n)
         fx[cube_order] = sx[slot_order] + 0.3 * dx * rng.standard_normal(n)
         fy[cube_order] = sy[slot_order] + 0.3 * dy * rng.standard_normal(n)
