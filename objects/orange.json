@@ -1,0 +1,51 @@
+{
+  "name": "orange",
+  "material": "orange",
+  "stack": "depth",
+  "shape": {
+    "ax": 0.1,
+    "ay": 0.1,
+    "height": 0.1,
+    "edge": 2.0,
+    "power": 0.5,
+    "wobble": [
+      [
+        3,
+        0.006,
+        0.0
+      ],
+      [
+        5,
+        0.004,
+        1.0
+      ]
+    ]
+  },
+  "intro": 0.0,
+  "lead": 0.1,
+  "hook": "WAIT FOR 1,000 CUTS…",
+  "hook_dur": 3.0,
+  "rounds": [
+    {
+      "cuts": 10,
+      "dur": 2.6,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 100,
+      "dur": 5.0,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 500,
+      "dur": 7.5,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 1000,
+      "dur": 10.0,
+      "collapse": 3.6
+    }
+  ],
+  "outro": 0.0
+}

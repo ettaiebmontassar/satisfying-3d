@@ -165,6 +165,48 @@ def cake_material(name, coord_mode):
     return m
 
 
+def orange_material(name, coord_mode):
+    """Orange : écorce piquetée ; dans les cubes, écorce → peau blanche → pulpe en quartiers (membranes claires)."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    peel = ramp(nt, noise(nt, vec, 25.0, 4).outputs["Fac"], [(0.35, (0.75, 0.13, 0.0)), (0.65, (0.92, 0.22, 0.0))]).outputs["Color"]
+    pores = nt.nodes.new("ShaderNodeTexVoronoi"); pores.inputs["Scale"].default_value = 420.0
+    nt.links.new(vec, pores.inputs["Vector"])
+    if coord_mode == "object":
+        col = cut_lines(nt, peel, (1.0, 0.72, 0.38))
+        bump = nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.12
+        nt.links.new(pores.outputs["Distance"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        bsdf.inputs["Roughness"].default_value = 0.22; bsdf.inputs["Coat Weight"].default_value = 0.45
+        nt.links.new(col, bsdf.inputs["Base Color"])
+        return m
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(vec, sep.inputs[0])
+    ang = nt.nodes.new("ShaderNodeMath"); ang.operation = "ARCTAN2"
+    nt.links.new(sep.outputs[1], ang.inputs[0]); nt.links.new(sep.outputs[0], ang.inputs[1])
+    seg = nt.nodes.new("ShaderNodeMath"); seg.operation = "MULTIPLY"; seg.inputs[1].default_value = 11 / (2 * math.pi)
+    nt.links.new(ang.outputs[0], seg.inputs[0])
+    pp = nt.nodes.new("ShaderNodeMath"); pp.operation = "PINGPONG"; pp.inputs[1].default_value = 0.5
+    nt.links.new(seg.outputs[0], pp.inputs[0])                      # 0 = sur une membrane entre deux quartiers
+    memb = nt.nodes.new("ShaderNodeMath"); memb.operation = "LESS_THAN"; memb.inputs[1].default_value = 0.05
+    nt.links.new(pp.outputs[0], memb.inputs[0])
+    juice = nt.nodes.new("ShaderNodeTexVoronoi"); juice.inputs["Scale"].default_value = 70.0
+    nt.links.new(vec, juice.inputs["Vector"])
+    flesh = ramp(nt, juice.outputs["Distance"], [(0.0, (1.0, 0.36, 0.0)), (0.45, (0.85, 0.17, 0.0))]).outputs["Color"]
+    flesh = mixc(nt, memb.outputs[0], flesh, (1.0, 0.62, 0.3))
+    dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+    k = nt.nodes.new("ShaderNodeMath"); k.operation = "MULTIPLY"; k.inputs[1].default_value = 1 / 0.012
+    nt.links.new(dep.outputs["Fac"], k.inputs[0])
+    lay = ramp(nt, k.outputs[0], [(0.0, (0, 0, 0)), (0.3, (0, 0, 0)), (0.38, (0.5, 0.5, 0.5)), (0.62, (0.5, 0.5, 0.5)), (0.7, (1, 1, 1))])
+    lo = nt.nodes.new("ShaderNodeMath"); lo.operation = "MULTIPLY"; lo.inputs[1].default_value = 2.0; lo.use_clamp = True
+    nt.links.new(lay.outputs["Color"], lo.inputs[0])
+    hi = nt.nodes.new("ShaderNodeMath"); hi.operation = "MULTIPLY_ADD"; hi.inputs[1].default_value = 2.0; hi.inputs[2].default_value = -1.0
+    hi.use_clamp = True; nt.links.new(lay.outputs["Color"], hi.inputs[0])
+    col = mixc(nt, lo.outputs[0], peel, (0.95, 0.85, 0.62))
+    col = mixc(nt, hi.outputs[0], col, flesh)
+    bsdf.inputs["Roughness"].default_value = 0.25; bsdf.inputs["Coat Weight"].default_value = 0.35
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -285,7 +327,7 @@ def build():
     for p in me.polygons:
         p.use_smooth = True
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 
