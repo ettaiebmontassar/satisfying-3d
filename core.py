@@ -20,6 +20,7 @@ class Shape:
         self.wob = s.get("wobble", [[2, 0.06, 0.0], [3, -0.05, 0.5], [1, 0.04, 1.6]])
         self.edge = s.get("edge", 8.0)
         self.power = s.get("power", 0.35)
+        self.torus = s.get("torus")                          # [centre, demi-largeur] en rayon normalisé
         self.rim = s.get("rim")                              # [hauteur, rayon normalisé, largeur]
         th = np.linspace(0, 2 * np.pi, 720)
         self.rmax = float(self.r(th).max())
@@ -37,6 +38,9 @@ class Shape:
     def top(self, rho):
         """Hauteur du dessus pour un rayon normalisé ρ (0 au centre, 1 au bord)."""
         rho = np.clip(rho, 0, 1)
+        if self.torus:                                      # anneau (donut) : section ronde centrée sur c, demi-largeur w
+            c, w = self.torus
+            return self.H * np.sqrt(np.clip(1 - ((rho - c) / w) ** 2, 0, 1))
         h = self.H * (1 - rho ** self.edge) ** self.power
         if self.rim:                                       # bord gonflé (croûte de pizza…)
             rh, rc, rw = self.rim
@@ -53,8 +57,8 @@ class Shape:
         rr = self.r(th)
         rhos = np.sin(np.linspace(0, np.pi / 2, rings + 1))
         def ring(rho, top):
-            z = self.top(np.full(segs, rho)) if top else np.zeros(segs)
-            z = np.maximum(z, 0) if top else z
+            z = self.top(np.full(segs, rho)) if top else np.full(segs, -0.0005)
+            z = np.where(z > 1e-4, z, -0.0005) if top else z
             return np.stack([self.ax * rho * rr * np.cos(th), self.ay * rho * rr * np.sin(th), z], 1)
         for top in (True, False):
             base = len(verts)
@@ -216,18 +220,34 @@ class Collapse:
         S = 48
         def sector(x, y):
             return np.floor((np.arctan2(y / shape.ay, x / shape.ax) + np.pi) / (2 * np.pi) * S).astype(np.int64) % S
-        rb = 1 if stack in ("depth", "surface") else 20          # 'depth' : tri par hauteur sur tout le secteur (pas d'anneaux d'écorce)
-        slot_order = np.lexsort((sz, np.floor(sq * rb), sector(sx, sy)))
-        slot_order = slot_order[np.linspace(0, len(slot_order) - 1, n).astype(np.int64)]
+        rb = 1 if stack in ("depth", "surface", "height", "upper") else 20          # 'depth' : tri par hauteur sur tout le secteur (pas d'anneaux d'écorce)
+        if rb == 1:                                         # du plus enfoui au plus visible (distance à la surface du dôme)
+            sdepth = hm * (1 - sq ** 2) - sz
+            skey = (-sdepth, )
+        else:
+            skey = (sz, np.floor(sq * rb))
         top_ = shape.top(pr)
         side_ = (1 - np.clip(pr, 0, 1)) * min(shape.ax, shape.ay)
         dep_ = np.maximum(0, np.minimum(top_ - pz, side_ * 1.4))
-        hk = {"depth": dep_, "surface": -dep_}.get(stack, pz)         # surface : la garniture finit sur le dessus
-        cube_order = np.lexsort((hk, np.floor(np.clip(pr, 0, 1) * rb), sector(px, py)))
+        # depth : le cœur visible ; surface : la garniture visible ; upper : le dessus (glaçage) visible
+        hk = {"depth": dep_, "surface": -dep_, "height": pz / np.maximum(top_, 1e-6),
+              "upper": (pz > 0.55 * top_) * 1.0 - dep_ * 10}.get(stack, pz)
+        ckey = (hk, ) if rb == 1 else (hk, np.floor(np.clip(pr, 0, 1) * rb))
+        # appariement secteur par secteur (sinon un léger décalage de comptes envoie la fin d'un secteur au fond du suivant)
+        csec, ssec = sector(px, py), sector(sx, sy)
         fx = np.empty(n); fy = np.empty(n); fz = np.empty(n)
-        fx[cube_order] = sx[slot_order] + 0.3 * dx * rng.standard_normal(n)
-        fy[cube_order] = sy[slot_order] + 0.3 * dy * rng.standard_normal(n)
-        fz[cube_order] = sz[slot_order]
+        for k in range(S):
+            ci = np.nonzero(csec == k)[0]; si = np.nonzero(ssec == k)[0]
+            if len(ci) == 0:
+                continue
+            if len(si) == 0:
+                si = np.arange(len(sx))
+            co = ci[np.lexsort(tuple(a[ci] for a in ckey))]
+            so = si[np.lexsort(tuple(a[si] for a in skey))]
+            pick = so[np.linspace(0, len(so) - 1, len(co)).astype(np.int64)]
+            fx[co] = sx[pick] + 0.3 * dx * rng.standard_normal(len(co))
+            fy[co] = sy[pick] + 0.3 * dy * rng.standard_normal(len(co))
+            fz[co] = sz[pick]
         self.p1 = np.stack([fx, fy, fz], 1).astype(np.float32)
         # départs : l'extérieur s'effrite d'abord, puis le cœur
         self.delay = (0.45 * (1 - np.clip(pr, 0, 1)) + 0.12 * rng.random(n) + 0.25 * (1 - pz / H)).astype(np.float32)

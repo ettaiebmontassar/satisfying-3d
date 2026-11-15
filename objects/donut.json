@@ -1,0 +1,75 @@
+{
+  "name": "donut",
+  "material": "donut",
+  "stack": "upper",
+  "shape": {
+    "ax": 0.12,
+    "ay": 0.12,
+    "height": 0.07,
+    "torus": [
+      0.62,
+      0.38
+    ],
+    "wobble": [
+      [
+        3,
+        0.005,
+        0.0
+      ]
+    ]
+  },
+  "intro": 0.0,
+  "lead": 0.1,
+  "hook": "WAIT FOR 1,000 CUTS…",
+  "hook_dur": 3.0,
+  "rounds": [
+    {
+      "cuts": 10,
+      "dur": 2.6,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 100,
+      "dur": 5.0,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 500,
+      "dur": 7.5,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 1000,
+      "dur": 10.0,
+      "collapse": 3.6
+    }
+  ],
+  "outro": 0.0,
+  "loop": 1.0,
+  "theme": {
+    "counter": [
+      [
+        0.12,
+        0.12,
+        0.14
+      ],
+      [
+        0.18,
+        0.18,
+        0.2
+      ]
+    ],
+    "wall": [
+      [
+        0.03,
+        0.04,
+        0.09
+      ],
+      [
+        0.06,
+        0.08,
+        0.16
+      ]
+    ]
+  }
+}

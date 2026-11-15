@@ -282,6 +282,57 @@ def avocado_material(name, coord_mode, pit=(0.025, 0.0, 0.012), pit_r=0.038):
     return m
 
 
+def donut_material(name, coord_mode, R=0.12, c=0.62, w=0.38, H=0.07):
+    """Donut : glaçage rose + vermicelles sur le dessus, pâte dorée dessous, mie moelleuse à l'intérieur."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(vec, sep.inputs[0])
+    flat = nt.nodes.new("ShaderNodeVectorMath"); flat.operation = "MULTIPLY"; flat.inputs[1].default_value = (1, 1, 0)
+    nt.links.new(vec, flat.inputs[0])
+    ln = nt.nodes.new("ShaderNodeVectorMath"); ln.operation = "LENGTH"; nt.links.new(flat.outputs[0], ln.inputs[0])
+    # hauteur locale du donut : H * sqrt(1 - ((r/R - c)/w)^2) ; glaçage là où z > 55 % de cette hauteur
+    q = nt.nodes.new("ShaderNodeMath"); q.operation = "MULTIPLY_ADD"; q.inputs[1].default_value = 1 / (R * w); q.inputs[2].default_value = -c / w
+    nt.links.new(ln.outputs["Value"], q.inputs[0])
+    q2 = nt.nodes.new("ShaderNodeMath"); q2.operation = "POWER"; q2.inputs[1].default_value = 2.0; nt.links.new(q.outputs[0], q2.inputs[0])
+    one = nt.nodes.new("ShaderNodeMath"); one.operation = "SUBTRACT"; one.inputs[0].default_value = 1.0; one.use_clamp = True
+    nt.links.new(q2.outputs[0], one.inputs[1])
+    sq = nt.nodes.new("ShaderNodeMath"); sq.operation = "SQRT"; nt.links.new(one.outputs[0], sq.inputs[0])
+    lim = nt.nodes.new("ShaderNodeMath"); lim.operation = "MULTIPLY"; lim.inputs[1].default_value = H * 0.55
+    nt.links.new(sq.outputs[0], lim.inputs[0])
+    upper = nt.nodes.new("ShaderNodeMath"); upper.operation = "GREATER_THAN"
+    nt.links.new(sep.outputs[2], upper.inputs[0]); nt.links.new(lim.outputs[0], upper.inputs[1])
+    glaze = ramp(nt, noise(nt, vec, 20.0, 3).outputs["Fac"], [(0.4, (0.85, 0.16, 0.36)), (0.6, (0.95, 0.3, 0.5))]).outputs["Color"]
+    spr = nt.nodes.new("ShaderNodeTexVoronoi"); spr.inputs["Scale"].default_value = 75.0
+    nt.links.new(vec, spr.inputs["Vector"])
+    dot = nt.nodes.new("ShaderNodeMath"); dot.operation = "LESS_THAN"; dot.inputs[1].default_value = 0.2
+    nt.links.new(spr.outputs["Distance"], dot.inputs[0])
+    sprc = nt.nodes.new("ShaderNodeHueSaturation"); sprc.inputs["Saturation"].default_value = 1.6; sprc.inputs["Value"].default_value = 1.5
+    nt.links.new(spr.outputs["Color"], sprc.inputs["Color"])
+    topc = mixc(nt, dot.outputs[0], glaze, sprc.outputs["Color"])
+    crust = ramp(nt, noise(nt, vec, 30.0, 4).outputs["Fac"], [(0.35, (0.5, 0.24, 0.07)), (0.65, (0.72, 0.42, 0.14))]).outputs["Color"]
+    outside = mixc(nt, upper.outputs[0], crust, topc)
+    if coord_mode == "object":
+        col = cut_lines(nt, outside, (1.0, 0.9, 0.75))
+        bsdf.inputs["Roughness"].default_value = 0.35; bsdf.inputs["Coat Weight"].default_value = 0.35
+    else:
+        crumb = ramp(nt, noise(nt, vec, 150.0, 3).outputs["Fac"], [(0.35, (0.82, 0.62, 0.36)), (0.65, (0.92, 0.76, 0.5))]).outputs["Color"]
+        dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+        shell = nt.nodes.new("ShaderNodeMath"); shell.operation = "LESS_THAN"; shell.inputs[1].default_value = 0.004
+        nt.links.new(dep.outputs["Fac"], shell.inputs[0])
+        col = mixc(nt, shell.outputs[0], crumb, outside)
+        # glaçage point par point : là où ce point du cube était à moins de 3,5 mm sous le dessus du donut
+        topz = nt.nodes.new("ShaderNodeMath"); topz.operation = "MULTIPLY_ADD"; topz.inputs[1].default_value = H; topz.inputs[2].default_value = -0.0035
+        nt.links.new(sq.outputs[0], topz.inputs[0])
+        near = nt.nodes.new("ShaderNodeMath"); near.operation = "GREATER_THAN"
+        nt.links.new(sep.outputs[2], near.inputs[0]); nt.links.new(topz.outputs[0], near.inputs[1])
+        glz = nt.nodes.new("ShaderNodeMath"); glz.operation = "MULTIPLY"
+        nt.links.new(near.outputs[0], glz.inputs[0]); nt.links.new(upper.outputs[0], glz.inputs[1])
+        col = mixc(nt, glz.outputs[0], col, topc)
+        bsdf.inputs["Roughness"].default_value = 0.45
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -405,7 +456,7 @@ def build():
     for p in me.polygons:
         p.use_smooth = True
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 
