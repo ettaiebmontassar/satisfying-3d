@@ -614,14 +614,14 @@ const adAnswer = () => { try { return localStorage.getItem(AD_OK_KEY); } catch {
 const adsOk = () => ADS_BASE && (!IN_EUROPE || adAnswer() === '1');
 let adChain = Promise.resolve();                          // the Adsterra script reads one global, so one banner at a time
 function showAd(slot, unit) {
-  if (!adsOk() || !unit.key || view.w < unit.w) return;
+  if (!adsOk() || !unit.key || !unit.src || view.w < unit.w) return;
   const turn = (slot.adTurn = (slot.adTurn || 0) + 1);
   slot.style.width = `${unit.w}px`; slot.style.height = `${unit.h}px`; slot.hidden = false;
   adChain = adChain.then(() => new Promise((done) => {
     if (slot.adTurn !== turn) return done();
     window.atOptions = { key: unit.key, format: 'iframe', height: unit.h, width: unit.w, params: {} };
     const s = document.createElement('script');
-    s.src = `${CONFIG.ads.host}/${unit.key}/invoke.js`; s.onload = s.onerror = done; setTimeout(done, 4000);
+    s.src = unit.src; s.onload = s.onerror = done; setTimeout(done, 4000);
     slot.replaceChildren(s);
   }));
 }

@@ -3,13 +3,12 @@ export const CONFIG = {
   // Link shown on the home screen ("Watch the videos"). Leave empty to hide the button.
   youtube: '',
 
-  // Ads (Adsterra banners). Nothing loads while `on` is false or a key is empty.
-  // In the Adsterra dashboard, create one 320x50 banner and one 300x250 banner, then paste their keys here.
-  // `host` is the start of the script address in the code Adsterra gives you (before "/<key>/invoke.js").
+  // Ads (Adsterra banners). Nothing loads while `on` is false; a banner with an empty key is skipped.
+  // `key` and `src` come from the code Adsterra gives for each banner size ("Get code"):
+  // key = the value after 'key', src = the address in the second <script src="...">.
   ads: {
-    on: false,
-    host: 'https://www.highperformanceformat.com',
-    top: { key: '', w: 320, h: 50 },     // at the top of the screen during a round
-    card: { key: '', w: 300, h: 250 },   // under the result card
+    on: true,
+    top: { key: '7ed5c9a2415a962792d753a9ec213ffd', src: 'https://bauval.org/22/7ed5c9a2415a962792d753a9ec213ffd', w: 320, h: 50 },   // top of the screen during a round
+    card: { key: '', src: '', w: 300, h: 250 },                                                                                      // under the result card
   },
 };
