@@ -333,6 +333,61 @@ def donut_material(name, coord_mode, R=0.12, c=0.62, w=0.38, H=0.07):
     return m
 
 
+def kiwi_material(name, coord_mode, zc=0.042, ry=0.088, rz=0.05):
+    """Kiwi couché : peau brune duveteuse ; dedans chair vert vif rayonnante, anneau de graines noires, cœur crème
+    (axe du fruit le long de x, à la hauteur zc)."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    skin = ramp(nt, noise(nt, vec, 90.0, 6, 0.7).outputs["Fac"], [(0.3, (0.07, 0.035, 0.012)), (0.7, (0.16, 0.09, 0.035))]).outputs["Color"]
+    if coord_mode == "object":
+        col = cut_lines(nt, skin, (0.55, 0.85, 0.12))
+        fuzz = noise(nt, vec, 400.0, 2)
+        bump = nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.35
+        nt.links.new(fuzz.outputs["Fac"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        bsdf.inputs["Roughness"].default_value = 0.85; bsdf.inputs["Sheen Weight"].default_value = 0.25
+        nt.links.new(col, bsdf.inputs["Base Color"])
+        return m
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(vec, sep.inputs[0])
+    # coordonnées autour de l'axe du fruit : u = y/ry, v = (z-zc)/rz
+    u = nt.nodes.new("ShaderNodeMath"); u.operation = "MULTIPLY"; u.inputs[1].default_value = 1 / ry
+    nt.links.new(sep.outputs[1], u.inputs[0])
+    v = nt.nodes.new("ShaderNodeMath"); v.operation = "MULTIPLY_ADD"; v.inputs[1].default_value = 1 / rz; v.inputs[2].default_value = -zc / rz
+    nt.links.new(sep.outputs[2], v.inputs[0])
+    cmb = nt.nodes.new("ShaderNodeCombineXYZ"); nt.links.new(u.outputs[0], cmb.inputs[0]); nt.links.new(v.outputs[0], cmb.inputs[1])
+    ln = nt.nodes.new("ShaderNodeVectorMath"); ln.operation = "LENGTH"; nt.links.new(cmb.outputs[0], ln.inputs[0])
+    rr = ln.outputs["Value"]                                       # 0 sur l'axe, ~1 près de la peau
+    ang = nt.nodes.new("ShaderNodeMath"); ang.operation = "ARCTAN2"
+    nt.links.new(v.outputs[0], ang.inputs[0]); nt.links.new(u.outputs[0], ang.inputs[1])
+    rays = nt.nodes.new("ShaderNodeMath"); rays.operation = "MULTIPLY"; rays.inputs[1].default_value = 34 / (2 * math.pi)
+    nt.links.new(ang.outputs[0], rays.inputs[0])
+    pp = nt.nodes.new("ShaderNodeMath"); pp.operation = "PINGPONG"; pp.inputs[1].default_value = 0.5
+    nt.links.new(rays.outputs[0], pp.inputs[0])
+    # chair : vert foncé près de la peau → vert vif → vert clair vers le cœur, avec rayons plus clairs
+    flesh = ramp(nt, rr, [(0.0, (0.8, 0.76, 0.42)), (0.22, (0.75, 0.72, 0.36)), (0.3, (0.2, 0.5, 0.0)),
+                          (0.6, (0.08, 0.34, 0.0)), (1.0, (0.03, 0.16, 0.0))]).outputs["Color"]
+    streak = ramp(nt, pp.outputs[0], [(0.0, (1, 1, 1)), (0.12, (0, 0, 0))]).outputs["Color"]
+    sk = nt.nodes.new("ShaderNodeMath"); sk.operation = "MULTIPLY"; sk.inputs[1].default_value = 0.35
+    nt.links.new(streak, sk.inputs[0])
+    flesh = mixc(nt, sk.outputs[0], flesh, (0.4, 0.62, 0.08))
+    # graines : petites taches noires dans l'anneau 0.3 < rr < 0.46
+    vor = nt.nodes.new("ShaderNodeTexVoronoi"); vor.inputs["Scale"].default_value = 110.0
+    nt.links.new(vec, vor.inputs["Vector"])
+    dot = nt.nodes.new("ShaderNodeMath"); dot.operation = "LESS_THAN"; dot.inputs[1].default_value = 0.34
+    nt.links.new(vor.outputs["Distance"], dot.inputs[0])
+    ring = ramp(nt, rr, [(0.27, (0, 0, 0)), (0.3, (1, 1, 1)), (0.5, (1, 1, 1)), (0.53, (0, 0, 0))]).outputs["Color"]
+    seed = nt.nodes.new("ShaderNodeMath"); seed.operation = "MULTIPLY"
+    nt.links.new(dot.outputs[0], seed.inputs[0]); nt.links.new(ring, seed.inputs[1])
+    flesh = mixc(nt, seed.outputs[0], flesh, (0.015, 0.01, 0.008))
+    # peau fine (2 mm) sur la couche extérieure
+    dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+    sk2 = nt.nodes.new("ShaderNodeMath"); sk2.operation = "LESS_THAN"; sk2.inputs[1].default_value = 0.002
+    nt.links.new(dep.outputs["Fac"], sk2.inputs[0])
+    col = mixc(nt, sk2.outputs[0], flesh, skin)
+    bsdf.inputs["Roughness"].default_value = 0.3; bsdf.inputs["Coat Weight"].default_value = 0.4
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -456,7 +511,7 @@ def build():
     for p in me.polygons:
         p.use_smooth = True
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 
