@@ -631,11 +631,23 @@ function topAd() {
   document.body.classList.toggle('adtop', ok);
   if (ok) showAd($('adTop'), u); else clearAd($('adTop'));
 }
+// popunder and social bar: one script each, loaded once, as soon as ads are allowed
+const adOnce = {};
+function pageAds() {
+  if (!adsOk()) return;
+  for (const name of ['popunder', 'socialBar']) {
+    const src = CONFIG.ads[name];
+    if (!src || adOnce[name]) continue;
+    adOnce[name] = true;
+    const s = document.createElement('script'); s.async = true; s.dataset.cfasync = 'false'; s.src = src;
+    document.body.append(s);
+  }
+}
 function clearAd(slot) { slot.adTurn = (slot.adTurn || 0) + 1; slot.hidden = true; slot.replaceChildren(); }
 function setAskText() { $('askText').textContent = T.ask; $('askLink').textContent = T.askLink; $('askYes').textContent = T.yes; $('askNo').textContent = T.no; }
 if (ADS_BASE && IN_EUROPE && adAnswer() === null) {
   setAskText(); $('ask').hidden = false;
-  for (const [id, v] of [['askYes', '1'], ['askNo', '0']]) $(id).addEventListener('click', () => { try { localStorage.setItem(AD_OK_KEY, v); } catch { /* no storage */ } $('ask').hidden = true; topAd(); });
+  for (const [id, v] of [['askYes', '1'], ['askNo', '0']]) $(id).addEventListener('click', () => { try { localStorage.setItem(AD_OK_KEY, v); } catch { /* no storage */ } $('ask').hidden = true; topAd(); pageAds(); });
 }
 
 // ---------------------------------------------------------------- start
@@ -644,5 +656,6 @@ setFruit(clamp(save.fruit | 0, 0, FRUITS.length - 1));
 if (!unlocked(F.i)) setFruit(0);
 setMute();
 goHome();
+pageAds();
 requestAnimationFrame(frame);
 if (Q.has('dev')) window.__g = { G, F, view, doCut, startGame, setFruit, goHome, endGame, ROUNDS };
