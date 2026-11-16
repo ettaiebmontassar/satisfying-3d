@@ -388,6 +388,40 @@ def kiwi_material(name, coord_mode, zc=0.042, ry=0.088, rz=0.05):
     return m
 
 
+def dragon_material(name, coord_mode):
+    """Fruit du dragon : peau rose vif à écailles (pointes vertes) ; dedans écorce rose fine puis chair magenta
+    pleine de petites graines noires."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    skin = ramp(nt, noise(nt, vec, 30.0, 4).outputs["Fac"], [(0.35, (0.75, 0.02, 0.18)), (0.65, (0.95, 0.08, 0.3))]).outputs["Color"]
+    sc = nt.nodes.new("ShaderNodeTexVoronoi"); sc.inputs["Scale"].default_value = 26.0; sc.feature = "DISTANCE_TO_EDGE"
+    nt.links.new(vec, sc.inputs["Vector"])
+    tip = ramp(nt, sc.outputs["Distance"], [(0.0, (1, 1, 1)), (0.05, (1, 1, 1)), (0.1, (0, 0, 0))]).outputs["Color"]
+    skin = mixc(nt, tip, skin, (0.25, 0.45, 0.04))                  # bords des écailles verts
+    if coord_mode == "object":
+        col = cut_lines(nt, skin, (1.0, 0.55, 0.75))
+        bump = nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.6
+        nt.links.new(sc.outputs["Distance"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        bsdf.inputs["Roughness"].default_value = 0.3; bsdf.inputs["Coat Weight"].default_value = 0.5
+        nt.links.new(col, bsdf.inputs["Base Color"])
+        return m
+    juice = noise(nt, vec, 18.0, 3)
+    flesh = ramp(nt, juice.outputs["Fac"], [(0.35, (0.5, 0.0, 0.2)), (0.65, (0.72, 0.02, 0.32))]).outputs["Color"]
+    vor = nt.nodes.new("ShaderNodeTexVoronoi"); vor.inputs["Scale"].default_value = 170.0
+    nt.links.new(vec, vor.inputs["Vector"])
+    dot = nt.nodes.new("ShaderNodeMath"); dot.operation = "LESS_THAN"; dot.inputs[1].default_value = 0.27
+    nt.links.new(vor.outputs["Distance"], dot.inputs[0])
+    flesh = mixc(nt, dot.outputs[0], flesh, (0.012, 0.006, 0.006))
+    dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+    k = nt.nodes.new("ShaderNodeMath"); k.operation = "MULTIPLY"; k.inputs[1].default_value = 1 / 0.004
+    nt.links.new(dep.outputs["Fac"], k.inputs[0])
+    rind = ramp(nt, k.outputs[0], [(0.0, (1, 1, 1)), (0.7, (1, 1, 1)), (0.9, (0, 0, 0))]).outputs["Color"]
+    col = mixc(nt, rind, flesh, (0.9, 0.12, 0.38))
+    bsdf.inputs["Roughness"].default_value = 0.28; bsdf.inputs["Coat Weight"].default_value = 0.4
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -511,7 +545,7 @@ def build():
     for p in me.polygons:
         p.use_smooth = True
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material, "dragon": dragon_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 
