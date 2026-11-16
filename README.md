@@ -19,5 +19,5 @@ Font: Archivo Black (SIL Open Font License, see `fonts/OFL.txt`).
 - `web/fruits.js` — the fruits: shapes and colours ported from `objects/*.json` and `scene.py`.
 - `web/config.js` — YouTube link and ad keys (Adsterra). Ads stay off until `ads.on` is true and the keys are filled in.
 - Run it locally: `cd web && python3 -m http.server 8000`, then open http://localhost:8000.
-- Online: https://ettaiebmontassar.github.io/ (repo `ettaiebmontassar.github.io`, updated with `git subtree push --prefix web git@github.com:ettaiebmontassar/ettaiebmontassar.github.io.git main`) and https://ettaiebmontassar.github.io/satisfying-3d/ (workflow "Deploy the game (GitHub Pages)", on each push).
+- Online: https://howmanycuts.github.io (repo `howmanycuts/howmanycuts.github.io`). After each change in `web/`, run `tools/publish_web.sh`. A copy is also deployed from this repo by the workflow "Deploy the game (GitHub Pages)".
 
