@@ -344,14 +344,14 @@ function goHome() {
   knife.visible = false; if (F.cubes) F.cubes.visible = false;
   F.mesh.visible = true; F.mesh.scale.set(1, 1, 1); F.mat.uniforms.uDone.value.set(0, 0, 0);
   setShadow(1); boardMat.uniforms.uShK.value = 0.62;
-  clearAd($('adTop')); document.body.classList.remove('adtop');
+  topAd();
   renderHome();
 }
 function startGame() {
   audioInit(); sfx.click();
   ui.home.hidden = true; ui.sheet.hidden = true; ui.hud.hidden = false;
   G.round = 0; G.total = 0;
-  if (adsOk() && CONFIG.ads.top.key && view.h >= 520) { document.body.classList.add('adtop'); showAd($('adTop'), CONFIG.ads.top); }
+  topAd();
   startRound();
 }
 function startRound() {
@@ -433,7 +433,7 @@ function endGame(win) {
   $('shAgain').textContent = T.again; $('shAgain').hidden = !win || last;
   $('shShare').textContent = T.share; $('shShare').hidden = !win;
   $('shHome').textContent = T.home;
-  clearAd($('adTop'));
+  topAd();
   ui.sheet.hidden = false;
   const room = view.h - $('sheet').querySelector('.card').offsetHeight - 40;
   if (adsOk() && CONFIG.ads.card.key && room >= CONFIG.ads.card.h) showAd($('adCard'), CONFIG.ads.card); else clearAd($('adCard'));
@@ -625,11 +625,17 @@ function showAd(slot, unit) {
     slot.replaceChildren(s);
   }));
 }
+// the banner at the top: there from the moment the page opens, and a new one on each screen (home, round, result)
+function topAd() {
+  const u = CONFIG.ads.top, ok = adsOk() && !!u.key && view.h >= 520 && view.w >= u.w;
+  document.body.classList.toggle('adtop', ok);
+  if (ok) showAd($('adTop'), u); else clearAd($('adTop'));
+}
 function clearAd(slot) { slot.adTurn = (slot.adTurn || 0) + 1; slot.hidden = true; slot.replaceChildren(); }
 function setAskText() { $('askText').textContent = T.ask; $('askLink').textContent = T.askLink; $('askYes').textContent = T.yes; $('askNo').textContent = T.no; }
 if (ADS_BASE && IN_EUROPE && adAnswer() === null) {
   setAskText(); $('ask').hidden = false;
-  for (const [id, v] of [['askYes', '1'], ['askNo', '0']]) $(id).addEventListener('click', () => { try { localStorage.setItem(AD_OK_KEY, v); } catch { /* no storage */ } $('ask').hidden = true; });
+  for (const [id, v] of [['askYes', '1'], ['askNo', '0']]) $(id).addEventListener('click', () => { try { localStorage.setItem(AD_OK_KEY, v); } catch { /* no storage */ } $('ask').hidden = true; topAd(); });
 }
 
 // ---------------------------------------------------------------- start
