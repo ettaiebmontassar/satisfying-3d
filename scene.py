@@ -467,6 +467,55 @@ def pomegranate_material(name, coord_mode):
     return m
 
 
+def strawberry_material(name, coord_mode, zc=0.04, ry=0.1, rz=0.06, cap_x=0.115):
+    """Fraise couchée (pointe vers -x) : rouge vif brillant, akènes jaunes, collerette verte ; dedans chair rouge
+    → rose → cœur blanc le long de l'axe, avec stries claires rayonnantes."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(vec, sep.inputs[0])
+    red = ramp(nt, noise(nt, vec, 12.0, 4).outputs["Fac"], [(0.3, (0.55, 0.0, 0.02)), (0.7, (0.85, 0.03, 0.04))]).outputs["Color"]
+    seeds = nt.nodes.new("ShaderNodeTexVoronoi"); seeds.inputs["Scale"].default_value = 70.0
+    nt.links.new(vec, seeds.inputs["Vector"])
+    sd = nt.nodes.new("ShaderNodeMath"); sd.operation = "LESS_THAN"; sd.inputs[1].default_value = 0.09
+    nt.links.new(seeds.outputs["Distance"], sd.inputs[0])
+    skin = mixc(nt, sd.outputs[0], red, (0.6, 0.38, 0.02))
+    cap = nt.nodes.new("ShaderNodeMath"); cap.operation = "GREATER_THAN"; cap.inputs[1].default_value = cap_x
+    nt.links.new(sep.outputs[0], cap.inputs[0])
+    skin = mixc(nt, cap.outputs[0], skin, (0.06, 0.25, 0.02))
+    if coord_mode == "object":
+        col = cut_lines(nt, skin, (1.0, 0.75, 0.75))
+        bump = nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.4; bump.invert = True
+        nt.links.new(seeds.outputs["Distance"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        bsdf.inputs["Roughness"].default_value = 0.2; bsdf.inputs["Coat Weight"].default_value = 0.7
+        nt.links.new(col, bsdf.inputs["Base Color"])
+        return m
+    u = nt.nodes.new("ShaderNodeMath"); u.operation = "MULTIPLY"; u.inputs[1].default_value = 1 / ry
+    nt.links.new(sep.outputs[1], u.inputs[0])
+    v = nt.nodes.new("ShaderNodeMath"); v.operation = "MULTIPLY_ADD"; v.inputs[1].default_value = 1 / rz; v.inputs[2].default_value = -zc / rz
+    nt.links.new(sep.outputs[2], v.inputs[0])
+    cmb = nt.nodes.new("ShaderNodeCombineXYZ"); nt.links.new(u.outputs[0], cmb.inputs[0]); nt.links.new(v.outputs[0], cmb.inputs[1])
+    ln = nt.nodes.new("ShaderNodeVectorMath"); ln.operation = "LENGTH"; nt.links.new(cmb.outputs[0], ln.inputs[0])
+    ang = nt.nodes.new("ShaderNodeMath"); ang.operation = "ARCTAN2"
+    nt.links.new(v.outputs[0], ang.inputs[0]); nt.links.new(u.outputs[0], ang.inputs[1])
+    rays = nt.nodes.new("ShaderNodeMath"); rays.operation = "MULTIPLY"; rays.inputs[1].default_value = 22 / (2 * math.pi)
+    nt.links.new(ang.outputs[0], rays.inputs[0])
+    pp = nt.nodes.new("ShaderNodeMath"); pp.operation = "PINGPONG"; pp.inputs[1].default_value = 0.5
+    nt.links.new(rays.outputs[0], pp.inputs[0])
+    flesh = ramp(nt, ln.outputs["Value"], [(0.0, (0.95, 0.75, 0.68)), (0.22, (0.92, 0.6, 0.55)), (0.4, (0.9, 0.18, 0.2)),
+                                            (0.75, (0.75, 0.02, 0.05)), (1.0, (0.6, 0.0, 0.03))]).outputs["Color"]
+    st = ramp(nt, pp.outputs[0], [(0.0, (1, 1, 1)), (0.1, (0, 0, 0))]).outputs["Color"]
+    stk = nt.nodes.new("ShaderNodeMath"); stk.operation = "MULTIPLY"; stk.inputs[1].default_value = 0.4
+    nt.links.new(st, stk.inputs[0])
+    flesh = mixc(nt, stk.outputs[0], flesh, (0.95, 0.65, 0.6))
+    dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+    sk2 = nt.nodes.new("ShaderNodeMath"); sk2.operation = "LESS_THAN"; sk2.inputs[1].default_value = 0.0015
+    nt.links.new(dep.outputs["Fac"], sk2.inputs[0])
+    col = mixc(nt, sk2.outputs[0], flesh, skin)
+    bsdf.inputs["Roughness"].default_value = 0.22; bsdf.inputs["Coat Weight"].default_value = 0.5
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -590,7 +639,7 @@ def build():
     for p in me.polygons:
         p.use_smooth = True
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material, "dragon": dragon_material, "pomegranate": pomegranate_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material, "dragon": dragon_material, "pomegranate": pomegranate_material, "strawberry": strawberry_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 
