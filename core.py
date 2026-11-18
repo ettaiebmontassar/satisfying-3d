@@ -72,6 +72,70 @@ class Shape:
         return verts, faces
 
 
+class LogoShape:
+    """Lettres extrudées (polygones 2D, en mètres) avec arête supérieure arrondie.
+    Même interface que Shape : rho < 1 à l'intérieur (0 au cœur des traits), top(rho), bbox, mesh."""
+
+    def __init__(self, cfg):
+        s = cfg["shape"]
+        self.polys = [np.asarray(p, float) for p in s["polys"]]
+        self.H = s["height"]; self.bevel = s.get("bevel", 0.006)
+        self.pile_spread = s.get("pile_spread", 0.18); self.pile_pow = s.get("pile_pow", 2)
+        self.torus = None; self.rim = None
+        allp = np.concatenate(self.polys)
+        self.bb = (allp[:, 0].min(), allp[:, 0].max(), allp[:, 1].min(), allp[:, 1].max())
+        self.dmax = 1.0
+        X, Y = np.meshgrid(np.linspace(self.bb[0], self.bb[1], 400), np.linspace(self.bb[2], self.bb[3], 300))
+        inside, d = self._sd(X, Y)
+        self.dmax = float(d[inside].max())
+        self.ax = self.ay = self.dmax                           # « côté » : distance au bord = (1-ρ)·dmax
+
+    def _sd(self, x, y):
+        """(dedans ?, distance au contour le plus proche) — calcul exact, numpy seul."""
+        x = np.asarray(x, float); y = np.asarray(y, float)
+        inside = np.zeros(x.shape, bool); d = np.full(x.shape, np.inf)
+        for p in self.polys:
+            q = np.roll(p, -1, 0)
+            for (ax_, ay_), (bx, by) in zip(p, q):
+                inside ^= ((ay_ > y) != (by > y)) & (x < (bx - ax_) * (y - ay_) / (by - ay_ + 1e-30) + ax_)
+                ex, ey = bx - ax_, by - ay_
+                t = np.clip(((x - ax_) * ex + (y - ay_) * ey) / (ex * ex + ey * ey), 0, 1)
+                d = np.minimum(d, np.hypot(x - ax_ - t * ex, y - ay_ - t * ey))
+        return inside, d
+
+    def rho(self, x, y):
+        inside, d = self._sd(x, y)
+        return np.where(inside, 1 - d / self.dmax, 1 + d / self.dmax)
+
+    def top(self, rho):
+        d = (1 - np.clip(rho, 0, 1)) * self.dmax
+        b = self.bevel
+        e = np.clip(1 - d / b, 0, 1)
+        return self.H - b + b * np.sqrt(np.clip(1 - e ** 2, 0, 1))
+
+    def bbox(self):
+        return (*self.bb, 0.0, self.H)
+
+    def mesh(self):
+        """Prismes : dessus, dessous et flancs de chaque polygone (le biseau est ajouté dans Blender)."""
+        verts, faces = [], []
+        for p in self.polys:
+            if np.sum(p[:, 0] * np.roll(p[:, 1], -1) - np.roll(p[:, 0], -1) * p[:, 1]) < 0:
+                p = p[::-1]                                     # sens trigonométrique vu de dessus
+            n, b = len(p), len(verts)
+            verts += [[x, y, -0.0005] for x, y in p] + [[x, y, self.H] for x, y in p]
+            faces.append(list(range(b + n, b + 2 * n)))
+            faces.append(list(range(b + n - 1, b - 1, -1)))
+            for i in range(n):
+                j = (i + 1) % n
+                faces.append([b + i, b + j, b + n + j, b + n + i])
+        return verts, faces
+
+
+def make_shape(cfg):
+    return LogoShape(cfg) if "polys" in cfg["shape"] else Shape(cfg)
+
+
 # ================================================================ minutage
 def split_cuts(n, shape):
     """Répartit n coupes sur x, y, z pour obtenir des cubes à peu près réguliers."""
@@ -89,7 +153,7 @@ class Plan:
 
     def __init__(self, cfg):
         self.cfg = cfg
-        self.shape = Shape(cfg)
+        self.shape = make_shape(cfg)
         self.rounds = []
         t = cfg.get("intro", 0.4)
         for rd in cfg["rounds"]:
@@ -201,13 +265,14 @@ class Collapse:
         # Chaque cube va vers une place du dôme du même secteur angulaire et à peu près au même rayon ;
         # à rayon égal, les plus hauts (ou, si stack='depth', les plus profonds = le cœur) finissent en haut.
         H = shape.H
-        f = 1.0 + spread
+        f = 1.0 + getattr(shape, "pile_spread", spread)
+        pw = getattr(shape, "pile_pow", 2)                  # 4 = tas à dessus plus plat (lettres)
         x0b, x1b, y0b, y1b, _, _ = shape.bbox()
         gxs = np.arange(x0b * f, x1b * f, dx) + dx / 2; gys = np.arange(y0b * f, y1b * f, dy) + dy / 2
         BX, BY = np.meshgrid(gxs, gys, indexing="ij"); BX, BY = BX.ravel(), BY.ravel()
         q = shape.rho(BX / f, BY / f); inside = q < 1
         BX, BY, q = BX[inside], BY[inside], q[inside]
-        prof = 1 - q ** 2
+        prof = 1 - q ** pw
         hm = n * dz * 0.92 / max(prof.sum(), 1e-9)
         for _ in range(30):                                  # hauteur du dôme pour loger tous les cubes
             cap = np.floor(hm * prof / (dz * 0.92)).astype(np.int64)
@@ -222,7 +287,7 @@ class Collapse:
             return np.floor((np.arctan2(y / shape.ay, x / shape.ax) + np.pi) / (2 * np.pi) * S).astype(np.int64) % S
         rb = 1 if stack in ("depth", "surface", "height", "upper") else 20          # 'depth' : tri par hauteur sur tout le secteur (pas d'anneaux d'écorce)
         if rb == 1:                                         # du plus enfoui au plus visible (distance à la surface du dôme)
-            sdepth = hm * (1 - sq ** 2) - sz
+            sdepth = hm * (1 - sq ** pw) - sz
             skey = (-sdepth, )
         else:
             skey = (sz, np.floor(sq * rb))

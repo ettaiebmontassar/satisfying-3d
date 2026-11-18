@@ -516,6 +516,46 @@ def strawberry_material(name, coord_mode, zc=0.04, ry=0.1, rz=0.06, cap_x=0.115)
     return m
 
 
+SUNSET = [(0.0, (0.16, 0.02, 0.42)), (0.3, (0.75, 0.02, 0.42)), (0.55, (1.0, 0.12, 0.25)),
+          (0.78, (1.0, 0.42, 0.04)), (1.0, (1.0, 0.75, 0.08))]
+
+
+def vice_material(name, coord_mode):
+    """Logo laqué « coucher de soleil » (violet → rose → orange → jaune du bas vers le haut des lettres) ;
+    dedans : même dégradé en résine plus claire, en couches fines."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(vec, sep.inputs[0])
+    g = nt.nodes.new("ShaderNodeMath"); g.operation = "MULTIPLY_ADD"; g.inputs[1].default_value = 1 / 0.2; g.inputs[2].default_value = 0.5
+    nt.links.new(sep.outputs[1], g.inputs[0])
+    gx = nt.nodes.new("ShaderNodeMath"); gx.operation = "MULTIPLY_ADD"; gx.inputs[1].default_value = 0.6
+    nt.links.new(sep.outputs[0], gx.inputs[0]); nt.links.new(g.outputs[0], gx.inputs[2])  # léger biais diagonal
+    lac = ramp(nt, gx.outputs[0], SUNSET).outputs["Color"]
+    if coord_mode == "object":
+        col = cut_lines(nt, lac, (1.0, 0.95, 0.85))
+        bsdf.inputs["Roughness"].default_value = 0.18; bsdf.inputs["Coat Weight"].default_value = 1.0
+        bsdf.inputs["Coat Roughness"].default_value = 0.03
+        nt.links.new(col, bsdf.inputs["Base Color"])
+        return m
+    # intérieur : couches horizontales (léger éclaircissement alterné) + paillettes
+    bands = nt.nodes.new("ShaderNodeMath"); bands.operation = "MULTIPLY"; bands.inputs[1].default_value = 1 / 0.012
+    nt.links.new(sep.outputs[2], bands.inputs[0])
+    pp = nt.nodes.new("ShaderNodeMath"); pp.operation = "PINGPONG"; pp.inputs[1].default_value = 1.0
+    nt.links.new(bands.outputs[0], pp.inputs[0])
+    lay = ramp(nt, pp.outputs[0], [(0.0, (0, 0, 0)), (0.9, (0, 0, 0)), (0.96, (0.55, 0.55, 0.55))]).outputs["Color"]
+    inner = mixc(nt, lay, lac, (1.0, 0.85, 0.75))
+    dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+    sk = nt.nodes.new("ShaderNodeMath"); sk.operation = "LESS_THAN"; sk.inputs[1].default_value = 0.0015
+    nt.links.new(dep.outputs["Fac"], sk.inputs[0])
+    dark = nt.nodes.new("ShaderNodeMix"); dark.data_type = "RGBA"; dark.blend_type = "MULTIPLY"
+    dark.inputs["Factor"].default_value = 0.35; nt.links.new(lac, dark.inputs[6]); dark.inputs[7].default_value = (0.5, 0.4, 0.6, 1)
+    col = mixc(nt, sk.outputs[0], inner, dark.outputs[2])
+    bsdf.inputs["Roughness"].default_value = 0.2; bsdf.inputs["Coat Weight"].default_value = 0.8
+    bsdf.inputs["Coat Roughness"].default_value = 0.05
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -637,9 +677,12 @@ def build():
     bm = bmesh.new(); bm.from_mesh(me); bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me); bm.free()
     for p in me.polygons:
-        p.use_smooth = True
+        p.use_smooth = not hasattr(SH, "polys")
     steak = bpy.data.objects.new("steak", me); sc.collection.objects.link(steak)
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material, "dragon": dragon_material, "pomegranate": pomegranate_material, "strawberry": strawberry_material}
+    if hasattr(SH, "polys"):                                  # lettres : arête du dessus arrondie
+        bv = steak.modifiers.new("bev", "BEVEL"); bv.width = SH.bevel; bv.segments = 6
+        bv.limit_method = "ANGLE"; bv.harden_normals = False
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material, "dragon": dragon_material, "pomegranate": pomegranate_material, "strawberry": strawberry_material, "vice": vice_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 
@@ -662,9 +705,11 @@ def build():
     cam = bpy.data.objects.new("cam", cam_data); sc.collection.objects.link(cam); sc.camera = cam
     cam.location = (0.34, -0.66, 0.50)
     look_at(cam, (0.0, 0.035, 0.0))
-    for name, loc, power, size, col in (("key", (-0.45, -0.5, 0.7), 14, 0.7, (1.0, 0.9, 0.8)),
-                                        ("fill", (0.6, -0.4, 0.35), 3, 0.8, (0.85, 0.9, 1.0)),
-                                        ("rim", (0.1, 0.55, 0.45), 9, 0.5, (1.0, 0.85, 0.7))):
+    lights = [("key", (-0.45, -0.5, 0.7), 14, 0.7, (1.0, 0.9, 0.8)),
+              ("fill", (0.6, -0.4, 0.35), 3, 0.8, (0.85, 0.9, 1.0)),
+              ("rim", (0.1, 0.55, 0.45), 9, 0.5, (1.0, 0.85, 0.7))]
+    lights = [tuple(l) for l in cfg.get("lights", lights)]                # thème lumineux (néons…)
+    for name, loc, power, size, col in lights:
         ld = bpy.data.lights.new(name, "AREA"); ld.energy = power; ld.size = size; ld.color = col
         lo = bpy.data.objects.new(name, ld); sc.collection.objects.link(lo); lo.location = loc; look_at(lo, (0, 0, 0))
     return sc, steak, cubes, knife
