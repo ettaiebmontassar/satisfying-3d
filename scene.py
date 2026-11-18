@@ -556,6 +556,54 @@ def vice_material(name, coord_mode):
     return m
 
 
+def mango_material(name, coord_mode, pit=(0.0, 0.0, 0.034), pit_r=(0.08, 0.04, 0.011)):
+    """Mangue : peau vert → rouge → jaune (rougeur) ; chair orange vif fibreuse ; grand noyau plat crème."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(vec, sep.inputs[0])
+    blush = nt.nodes.new("ShaderNodeMath"); blush.operation = "MULTIPLY_ADD"; blush.inputs[1].default_value = 3.0; blush.inputs[2].default_value = 0.15
+    nt.links.new(sep.outputs[0], blush.inputs[0])
+    bn = nt.nodes.new("ShaderNodeMath"); bn.operation = "ADD"
+    nt.links.new(blush.outputs[0], bn.inputs[0]); nt.links.new(noise(nt, vec, 9.0, 4).outputs["Fac"], bn.inputs[1])
+    skin = ramp(nt, bn.outputs[0], [(0.45, (0.12, 0.32, 0.02)), (0.75, (0.75, 0.42, 0.02)), (0.95, (0.75, 0.06, 0.04)),
+                                    (1.25, (0.6, 0.02, 0.05))]).outputs["Color"]
+    dots = nt.nodes.new("ShaderNodeTexVoronoi"); dots.inputs["Scale"].default_value = 160.0
+    nt.links.new(vec, dots.inputs["Vector"])
+    ld = nt.nodes.new("ShaderNodeMath"); ld.operation = "LESS_THAN"; ld.inputs[1].default_value = 0.08
+    nt.links.new(dots.outputs["Distance"], ld.inputs[0])
+    skin = mixc(nt, ld.outputs[0], skin, (0.85, 0.75, 0.3))         # lenticelles claires
+    if coord_mode == "object":
+        col = cut_lines(nt, skin, (1.0, 0.75, 0.2))
+        bsdf.inputs["Roughness"].default_value = 0.3; bsdf.inputs["Coat Weight"].default_value = 0.5
+        nt.links.new(col, bsdf.inputs["Base Color"])
+        return m
+    fib = nt.nodes.new("ShaderNodeTexWave"); fib.wave_type = "BANDS"; fib.bands_direction = "X"
+    fib.inputs["Scale"].default_value = 60.0; fib.inputs["Distortion"].default_value = 6.0; fib.inputs["Detail"].default_value = 3.0
+    nt.links.new(vec, fib.inputs["Vector"])
+    dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+    k = nt.nodes.new("ShaderNodeMath"); k.operation = "MULTIPLY"; k.inputs[1].default_value = 1 / 0.03
+    nt.links.new(dep.outputs["Fac"], k.inputs[0])
+    flesh = ramp(nt, k.outputs[0], [(0.0, (1.0, 0.42, 0.0)), (0.6, (0.95, 0.28, 0.0)), (1.0, (0.9, 0.22, 0.0))]).outputs["Color"]
+    fk = nt.nodes.new("ShaderNodeMath"); fk.operation = "MULTIPLY"; fk.inputs[1].default_value = 0.25
+    nt.links.new(fib.outputs["Fac"], fk.inputs[0])
+    flesh = mixc(nt, fk.outputs[0], flesh, (1.0, 0.55, 0.04))
+    sk = nt.nodes.new("ShaderNodeMath"); sk.operation = "LESS_THAN"; sk.inputs[1].default_value = 0.0015
+    nt.links.new(dep.outputs["Fac"], sk.inputs[0])
+    col = mixc(nt, sk.outputs[0], flesh, skin)
+    sub = nt.nodes.new("ShaderNodeVectorMath"); sub.operation = "SUBTRACT"; sub.inputs[1].default_value = pit
+    nt.links.new(vec, sub.inputs[0])
+    dv = nt.nodes.new("ShaderNodeVectorMath"); dv.operation = "DIVIDE"; dv.inputs[1].default_value = pit_r
+    nt.links.new(sub.outputs[0], dv.inputs[0])
+    ln = nt.nodes.new("ShaderNodeVectorMath"); ln.operation = "LENGTH"; nt.links.new(dv.outputs[0], ln.inputs[0])
+    inpit = nt.nodes.new("ShaderNodeMath"); inpit.operation = "LESS_THAN"; inpit.inputs[1].default_value = 1.0
+    nt.links.new(ln.outputs["Value"], inpit.inputs[0])
+    pitc = ramp(nt, fib.outputs["Fac"], [(0.2, (0.72, 0.6, 0.35)), (0.8, (0.9, 0.8, 0.55))]).outputs["Color"]
+    col = mixc(nt, inpit.outputs[0], col, pitc)
+    bsdf.inputs["Roughness"].default_value = 0.25; bsdf.inputs["Coat Weight"].default_value = 0.45
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def meat_material(name, coord_mode):
     """Viande crue persillée. coord_mode = 'object' (steak entier) ou 'instancer' (cubes : position d'origine)."""
     m, nt, bsdf = mat(name)
@@ -682,7 +730,7 @@ def build():
     if hasattr(SH, "polys"):                                  # lettres : arête du dessus arrondie
         bv = steak.modifiers.new("bev", "BEVEL"); bv.width = SH.bevel; bv.segments = 6
         bv.limit_method = "ANGLE"; bv.harden_normals = False
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material, "dragon": dragon_material, "pomegranate": pomegranate_material, "strawberry": strawberry_material, "vice": vice_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material, "dragon": dragon_material, "pomegranate": pomegranate_material, "strawberry": strawberry_material, "vice": vice_material, "mango": mango_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 

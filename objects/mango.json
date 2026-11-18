@@ -1,0 +1,57 @@
+{
+  "name": "mango",
+  "material": "mango",
+  "stack": "depth",
+  "shape": {
+    "ax": 0.14,
+    "ay": 0.095,
+    "height": 0.085,
+    "edge": 2.0,
+    "power": 0.5,
+    "wobble": [
+      [
+        1,
+        0.06,
+        0.0
+      ],
+      [
+        2,
+        0.03,
+        1.57
+      ],
+      [
+        3,
+        0.015,
+        0.4
+      ]
+    ]
+  },
+  "intro": 0.0,
+  "lead": 0.1,
+  "hook": "WAIT FOR 1,000 CUTS\u2026",
+  "hook_dur": 3.0,
+  "rounds": [
+    {
+      "cuts": 10,
+      "dur": 2.6,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 100,
+      "dur": 5.0,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 500,
+      "dur": 7.5,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 1000,
+      "dur": 10.0,
+      "collapse": 3.6
+    }
+  ],
+  "outro": 0.0,
+  "loop": 1.0
+}
