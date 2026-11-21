@@ -1,0 +1,57 @@
+{
+  "name": "redcabbage",
+  "material": "redcabbage",
+  "stack": "depth",
+  "shape": {
+    "ax": 0.11,
+    "ay": 0.105,
+    "height": 0.115,
+    "edge": 2.2,
+    "power": 0.55,
+    "wobble": [
+      [
+        5,
+        0.018,
+        0.0
+      ],
+      [
+        3,
+        0.012,
+        1.0
+      ],
+      [
+        8,
+        0.006,
+        0.5
+      ]
+    ]
+  },
+  "intro": 0.0,
+  "lead": 0.1,
+  "hook": "WAIT FOR 1,000 CUTS\u2026",
+  "hook_dur": 3.0,
+  "rounds": [
+    {
+      "cuts": 10,
+      "dur": 2.6,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 100,
+      "dur": 5.0,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 500,
+      "dur": 7.5,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 1000,
+      "dur": 10.0,
+      "collapse": 3.6
+    }
+  ],
+  "outro": 0.0,
+  "loop": 1.0
+}
