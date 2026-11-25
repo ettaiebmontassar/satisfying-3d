@@ -1,0 +1,52 @@
+{
+  "name": "cheese",
+  "material": "cheese",
+  "stack": "depth",
+  "shape": {
+    "ax": 0.125,
+    "ay": 0.125,
+    "height": 0.08,
+    "edge": 14.0,
+    "power": 0.18,
+    "wobble": [
+      [
+        3,
+        0.005,
+        0.0
+      ],
+      [
+        5,
+        0.003,
+        1.0
+      ]
+    ]
+  },
+  "intro": 0.0,
+  "lead": 0.1,
+  "hook": "WAIT FOR 1,000 CUTS\u2026",
+  "hook_dur": 3.0,
+  "rounds": [
+    {
+      "cuts": 10,
+      "dur": 2.6,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 100,
+      "dur": 5.0,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 500,
+      "dur": 7.5,
+      "collapse": 2.2
+    },
+    {
+      "cuts": 1000,
+      "dur": 10.0,
+      "collapse": 3.6
+    }
+  ],
+  "outro": 0.0,
+  "loop": 1.0
+}

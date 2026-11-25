@@ -165,6 +165,38 @@ def cake_material(name, coord_mode):
     return m
 
 
+def cheese_material(name, coord_mode):
+    """Meule de fromage à trous : croûte cirée jaune doré ; dedans pâte jaune pâle, trous ronds ombrés, fine croûte."""
+    m, nt, bsdf = mat(name)
+    vec = coords(nt, coord_mode)
+    rind = ramp(nt, noise(nt, vec, 35.0, 4).outputs["Fac"], [(0.35, (0.62, 0.36, 0.04)), (0.65, (0.8, 0.5, 0.08))]).outputs["Color"]
+    if coord_mode == "object":
+        col = cut_lines(nt, rind, (1.0, 0.86, 0.45))
+        bump = nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.08
+        nt.links.new(noise(nt, vec, 60.0, 3).outputs["Fac"], bump.inputs["Height"])
+        nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        bsdf.inputs["Roughness"].default_value = 0.35; bsdf.inputs["Coat Weight"].default_value = 0.4
+        nt.links.new(col, bsdf.inputs["Base Color"])
+        return m
+    paste = ramp(nt, noise(nt, vec, 50.0, 3).outputs["Fac"], [(0.35, (0.93, 0.78, 0.36)), (0.65, (1.0, 0.86, 0.46))]).outputs["Color"]
+    holes = nt.nodes.new("ShaderNodeTexVoronoi"); holes.inputs["Scale"].default_value = 28.0
+    holes.inputs["Randomness"].default_value = 1.0
+    nt.links.new(vec, holes.inputs["Vector"])
+    # trou = près du centre d'une cellule ; fond du trou plus sombre, bord adouci
+    hole = ramp(nt, holes.outputs["Distance"], [(0.0, (1, 1, 1)), (0.17, (1, 1, 1)), (0.22, (0, 0, 0))]).outputs["Color"]
+    shade = ramp(nt, holes.outputs["Distance"], [(0.0, (0.55, 0.4, 0.12)), (0.2, (0.85, 0.68, 0.28))]).outputs["Color"]
+    col = mixc(nt, hole, paste, shade)
+    bump = nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.6; bump.invert = True
+    nt.links.new(hole, bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    dep = nt.nodes.new("ShaderNodeAttribute"); dep.attribute_type = "INSTANCER"; dep.attribute_name = "depth"
+    outer = nt.nodes.new("ShaderNodeMath"); outer.operation = "LESS_THAN"; outer.inputs[1].default_value = 0.003
+    nt.links.new(dep.outputs["Fac"], outer.inputs[0])
+    col = mixc(nt, outer.outputs[0], col, rind)
+    bsdf.inputs["Roughness"].default_value = 0.45; bsdf.inputs["Coat Weight"].default_value = 0.1
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    return m
+
+
 def orange_material(name, coord_mode, peel_c=((0.75, 0.13, 0.0), (0.92, 0.22, 0.0)), line_c=(1.0, 0.72, 0.38),
                     flesh_c=((1.0, 0.36, 0.0), (0.85, 0.17, 0.0)), memb_c=(1.0, 0.62, 0.3), pith_c=(0.95, 0.85, 0.62), segs=11):
     """Orange : écorce piquetée ; dans les cubes, écorce → peau blanche → pulpe en quartiers (membranes claires)."""
@@ -783,7 +815,7 @@ def build():
     if hasattr(SH, "polys"):                                  # lettres : arête du dessus arrondie
         bv = steak.modifiers.new("bev", "BEVEL"); bv.width = SH.bevel; bv.segments = 6
         bv.limit_method = "ANGLE"; bv.harden_normals = False
-    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material, "dragon": dragon_material, "pomegranate": pomegranate_material, "strawberry": strawberry_material, "vice": vice_material, "mango": mango_material, "redcabbage": redcabbage_material, "lemon": lemon_material}
+    MATS = {"meat": meat_material, "watermelon": watermelon_material, "cake": cake_material, "orange": orange_material, "pizza": pizza_material, "avocado": avocado_material, "donut": donut_material, "kiwi": kiwi_material, "dragon": dragon_material, "pomegranate": pomegranate_material, "strawberry": strawberry_material, "vice": vice_material, "mango": mango_material, "redcabbage": redcabbage_material, "lemon": lemon_material, "cheese": cheese_material}
     material = MATS[cfg.get("material", "meat")]
     steak.data.materials.append(material("whole", "object"))
 
